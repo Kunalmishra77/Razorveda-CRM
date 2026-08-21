@@ -85,7 +85,7 @@ F3 survived for months.
 | Contract | Rule | Applied to |
 |---|---|---|
 | `PHONE` | Passes `normalisePhone` — 10 digits starting 6-9 after prefix stripping | `primary_phone`, alt numbers |
-| `PINCODE` | 6 digits, first digit **1-8**. Indian PINs never start 0 or 9. | `ship_pincode`, `customer.pincode` |
+| `PINCODE` | 6 digits, first digit **1-8**. A **9** prefix is the Army Postal Service — structurally valid, but flagged as a dispatch risk rather than a typo, because many couriers will not deliver to an APO address. A military family is still a customer. | `ship_pincode`, `customer.pincode` |
 | `AWB` | Numeric, length **9-16** | `awb_number` |
 | `ENUM` | Value present in the closed set, case-insensitive | `current_status`, `payment_mode`, disposition |
 | `DATE` | Parses under the source's configured locale, and is not in the future | `order_date`, `delivered_date`, `rto_date` |

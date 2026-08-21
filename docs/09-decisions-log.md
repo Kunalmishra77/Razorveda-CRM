@@ -277,3 +277,10 @@ documented, per CLAUDE.md section 4 ("Log decisions").
 | # | Defect | Where |
 |---|---|---|
 | **R8** | `pg:start` returned as soon as the socket answered an SSLRequest, but the postmaster answers that **while still starting up** — so the next command died with `57P03 the database system is starting up`. Readiness now means a completed `SELECT 1`, not an open socket. After an unclean shutdown, recovery takes seconds. | `packages/db/src/local-pg.ts` |
+
+| ID | Decision | Tier | Rationale |
+|---|---|---|---|
+| **D-98** | Row-status precedence is **PARKED > ERROR > DUPLICATE > WARNING > VALID**, and lower-severity problems are still recorded on the row. | 2 | An un-keyable row is un-keyable first: the admin's next action is to find a number, not to fix the amount, and leading with the amount would send them down the wrong path. The other issues stay attached so nothing is lost. |
+| **D-99** | Pincode-to-state is **reference data, deliberately partial**, and an unknown prefix produces **no opinion**. Mismatches are WARNING, never ERROR. | 2 | Geography is a hint, not a gate — blocking on it would reject real orders, and the client's own Client Category column already holds stray PIN codes. A false warning is worse than silence: it trains admins to ignore the column. |
+| **D-100** | A **9-prefix PIN is Army Postal Service**, flagged as a dispatch risk rather than a typo. | 2 | Found by a test I had written wrongly. It is structurally valid, not an unused zone, and many couriers will not deliver to an APO address — so it is a dispatch problem waiting to happen, not bad data. A military family is still a customer, so it is never rejected. docs/06 §5.1 corrected. |
+| **D-101** | Value sanity has **no opinion when the SKU did not resolve**. | 1 | No MRP means no bound. Inventing one would reject real orders from products we simply failed to match. |
