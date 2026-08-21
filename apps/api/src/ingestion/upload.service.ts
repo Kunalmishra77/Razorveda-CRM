@@ -1,5 +1,5 @@
 import type { Pool } from 'pg';
-import { duplicateFileMessage, fileHash, headerSignature } from '@razorveda/shared';
+import { duplicateFileMessage, fileHash, headerSignature } from '@razorveda/shared/server';
 import { withRlsContext, type RlsSession } from '../db/rls-context.js';
 import type { StorageAdapter } from '../storage/storage.js';
 

@@ -1,44 +1,104 @@
 'use client';
 
 import { useState } from 'react';
-// Phase 0 exit criterion 6: apps/web imports a Zod schema from packages/shared
-// and typechecks. One definition, both sides — the form and the endpoint cannot
-// disagree about what a valid login looks like.
+import { useRouter } from 'next/navigation';
 import { loginSchema } from '@razorveda/shared';
+import { api, ApiError, type LoginResponse } from '../../lib/api';
+import { s, T } from '../../lib/ui';
 
-export default function LoginStub() {
-  const [errors, setErrors] = useState<string[]>([]);
+/**
+ * Sign in.
+ *
+ * The same Zod schema the API validates with (`@razorveda/shared`), so the form
+ * and the endpoint cannot disagree about what a valid login looks like. The
+ * client check is for speed of feedback only — the server never trusts it.
+ */
+export default function LoginPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [totp, setTotp] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [needsTotp, setNeedsTotp] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const data = Object.fromEntries(new FormData(e.currentTarget));
-    const result = loginSchema.safeParse(data);
-    setErrors(
-      result.success
-        ? ['Valid input. Authentication lands in Phase 1 week 3 — see tasks/phase-1-core.md.']
-        : result.error.issues.map((i) => i.message),
-    );
+    setError(null);
+
+    const parsed = loginSchema.safeParse({
+      email,
+      password,
+      ...(totp ? { totp } : {}),
+    });
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? 'Check the form and try again.');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const result = await api.post<LoginResponse>('/auth/login', parsed.data);
+      if (!result.ok) {
+        // TOTP_REQUIRED is not a failure to shout about — it is the next step.
+        if (result.reason === 'TOTP_REQUIRED') setNeedsTotp(true);
+        setError(result.message ?? 'That did not work.');
+        return;
+      }
+      router.push('/upload');
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Something unexpected happened.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
-    <main style={{ padding: '2rem', maxWidth: 360, color: '#181B24' }}>
-      <h1 style={{ fontSize: '1.25rem' }}>Sign in</h1>
-      <form onSubmit={onSubmit}>
-        <label htmlFor="email">Email</label>
-        <input id="email" name="email" defaultValue="" style={{ width: '100%', margin: '4px 0 12px' }} />
-        <label htmlFor="password">Password</label>
-        <input id="password" name="password" type="password" style={{ width: '100%', margin: '4px 0 12px' }} />
-        <button type="submit">Sign in</button>
+    <main style={{ ...s.page, maxWidth: 380, paddingTop: 64 }}>
+      <h1 style={s.h1}>Razorveda CRM</h1>
+      <p style={s.sub}>Sign in to continue.</p>
+
+      <form onSubmit={onSubmit} style={s.card}>
+        <label style={s.label} htmlFor="email">Email</label>
+        <input
+          id="email" type="email" autoComplete="username" value={email}
+          onChange={(e) => setEmail(e.target.value)} style={{ ...s.input, marginBottom: 12 }}
+        />
+
+        <label style={s.label} htmlFor="password">Password</label>
+        <input
+          id="password" type="password" autoComplete="current-password" value={password}
+          onChange={(e) => setPassword(e.target.value)} style={{ ...s.input, marginBottom: 12 }}
+        />
+
+        {needsTotp && (
+          <>
+            <label style={s.label} htmlFor="totp">
+              6-digit code from your authenticator
+            </label>
+            <input
+              id="totp" inputMode="numeric" autoComplete="one-time-code" maxLength={6}
+              value={totp} onChange={(e) => setTotp(e.target.value.replace(/\D/g, ''))}
+              style={{ ...s.input, ...s.mono, marginBottom: 12, letterSpacing: '3px' }}
+            />
+          </>
+        )}
+
+        <button type="submit" disabled={busy} style={busy ? s.btnDisabled : { ...s.btnPrimary, width: '100%' }}>
+          {busy ? 'Signing in…' : 'Sign in'}
+        </button>
+
+        {error && (
+          // Says what happened and what to do next. Never "Something went wrong".
+          <p role="alert" style={{ color: T.clay, fontSize: 13, marginTop: 12, marginBottom: 0 }}>
+            {error}
+          </p>
+        )}
       </form>
-      {errors.length > 0 && (
-        // Errors say what happened and what to do next. Never "Something went
-        // wrong" (docs/07 section 5).
-        <ul style={{ color: '#B03A2C', paddingLeft: '1.1rem' }}>
-          {errors.map((m) => (
-            <li key={m}>{m}</li>
-          ))}
-        </ul>
-      )}
+
+      <p style={{ ...s.sub, fontSize: 12 }}>
+        Admins and the owner need a 6-digit code. Ask an admin if you are locked out.
+      </p>
     </main>
   );
 }

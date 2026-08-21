@@ -3,11 +3,31 @@
   "compilerOptions": {
     "noEmit": true,
     "jsx": "preserve",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["node", "react"],
-    "plugins": [{ "name": "next" }],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node",
+      "react"
+    ],
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
     "allowJs": true,
-    "incremental": true
+    "incremental": true,
+    "isolatedModules": true
   },
-  "include": ["app/**/*.ts", "app/**/*.tsx", "next-env.d.ts", ".next/types/**/*.ts"]
+  "include": [
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "next-env.d.ts",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

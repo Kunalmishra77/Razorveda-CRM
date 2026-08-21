@@ -15,3 +15,5 @@ tmp/
 .pgdata/
 
 .uploads/
+
+apps/web/next-dev*.log

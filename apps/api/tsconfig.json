@@ -3,10 +3,13 @@
   "compilerOptions": {
     "noEmit": true,
     "types": ["node"],
-    "module": "CommonJS",
-    "moduleResolution": "Node",
+    // Bundler resolution so the "@razorveda/shared/server" exports subpath
+    // resolves. tsc only typechecks here — tsx does the running, and it honours
+    // package.json exports directly — so this changes nothing at runtime.
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts"]
 }

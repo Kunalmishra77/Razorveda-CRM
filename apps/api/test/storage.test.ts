@@ -120,7 +120,7 @@ describe('storage keys agree with the ingestion fingerprint', () => {
   it('uses the same hash the duplicate check uses', async () => {
     // If these ever diverged, a file could be refused as a duplicate by the
     // database while being stored again under a different key, or vice versa.
-    const { fileHash } = await import('@razorveda/shared');
+    const { fileHash } = await import('@razorveda/shared/server');
     const stored = await storage.put(FILE, 'a.csv');
     expect(stored.hash).toBe(fileHash(FILE));
   });
