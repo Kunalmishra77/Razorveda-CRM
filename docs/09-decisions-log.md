@@ -86,3 +86,25 @@ now **decided**. Anything not listed here remains open.
 | ID | Open question |
 |---|---|
 | **O-13** | `employee.monthly_target` is column-level, which RLS cannot hide. v1 filters it in the API for non-admins. Do we want hard enforcement via an admin-only view and a column REVOKE? |
+
+---
+
+# Session log — 2026-08-21 · Phase 0 (part 1)
+
+Scaffold, `packages/shared`, `packages/metrics`. Decisions taken that were not already
+documented, per CLAUDE.md section 4 ("Log decisions").
+
+| ID | Decision | Rationale |
+|---|---|---|
+| **D-28** | Line endings forced to LF via `.gitattributes`. | Ingestion hashes raw file bytes (docs/06 stage 1). CRLF rewriting on checkout would give the same fixture a different SHA-256 on Windows and in Linux CI, making duplicate-file detection platform-dependent. The v3 zip shipped `delivered_data_sample.csv` with CRLF, so this was already live. |
+| **D-29** | Money crosses the wire as a **decimal string**, never a JS number. | `numeric(12,2)` in Postgres; docs/02 says "Never float." A JSON number is an IEEE double, so parsing a rupee value into one reintroduces exactly the drift the schema forbids. `moneySchema` enforces the string form. |
+| **D-30** | Postgres enums get the **same parity guardrail** as the metric dictionary. `packages/shared/test/enum-parity.test.ts` parses `db/schema.sql` and fails on any drift. | Not requested, but the failure mode is identical to the one D-20 and docs/03 rule 3 exist to prevent: a value added in SQL that silently never reaches the API and web. 15 enums, 18 assertions. |
+| **D-31** | A metric's identity in the registry is **(section, name)**, not name alone. | "Upsell Index" legitimately appears in both docs/03 section 4 (attribution metric) and section 5 (EES score component). Keying on name alone would have made one of them invisible to the parity test. |
+| **D-32** | The parity test **guards the guard**: it asserts the doc parser found >20 metrics across all five sections. | A parser that silently matches nothing makes every other assertion in the file pass vacuously. That is the classic way a guardrail rots without anyone noticing. |
+| **D-33** | Local `docker-compose.yml` runs Postgres as `razorveda_migrator`, not `postgres`. | Implements D-21 in dev, not just in prod. The owner role and the app role must be different locally too, or the isolation test proves nothing on the machine where it is actually run. |
+
+## Raised this session, not decided
+
+| # | Observation | Status |
+|---|---|---|
+| **N7** | `docs/03-metric-dictionary.md` has **two headings numbered `## 6.`** — "6. Incentive" (line 114) and "6. Period basis" (line 133). The second is presumably section 7. | Flagged, not fixed. Harmless today because neither is a metric table, but the parity parser keys section context off the heading number, so a metric table added under the second `## 6.` would be filed under section 6 and mismatch the registry. Client/author call. |
