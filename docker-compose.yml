@@ -1,0 +1,72 @@
+# Local development infrastructure ONLY.
+#
+# D-17: dev and CI run against this stack. Coolify is the deploy target and must
+# never be pointed at by destructive schema, seed or RLS work.
+#
+# D-14: pgvector is not required in v1. The stock postgres:16 image ships pgcrypto
+# and pg_trgm, which is everything db/schema.sql now asks for.
+#
+# The migration user (razorveda_migrator) owns the tables. The API connects as a
+# different, non-owning role — see D-21 and db/rls-policies.sql. Owners bypass RLS.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: razorveda-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: razorveda_migrator
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localdev}
+      POSTGRES_DB: razorveda
+      TZ: Asia/Kolkata
+      PGTZ: Asia/Kolkata
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U razorveda_migrator -d razorveda"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: razorveda-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    container_name: razorveda-minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:

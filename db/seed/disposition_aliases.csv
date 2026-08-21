@@ -1,0 +1,65 @@
+disposition_code,alias
+RINGING,ringing
+RINGING,rinigng
+RINGING,ringng
+RINGING,ring
+RINGING,ring cut
+RINGING,ringing // ringing
+RINGING,no answer
+RINGING,not picking
+BUSY,busy
+BUSY,bsy
+BUSY,busy call cut
+BUSY,bsy call cut
+BUSY,bsy cal cut
+BUSY,call cut
+BUSY,cut call
+NOT_CONNECTED,not connect
+NOT_CONNECTED,not connected
+NOT_CONNECTED,nc
+NOT_CONNECTED,no connect
+NOT_CONNECTED,unreachable
+SWITCHED_OFF,switch off
+SWITCHED_OFF,switched off
+SWITCHED_OFF,swtch off
+SWITCHED_OFF,phone off
+ORDER_DONE,order done
+ORDER_DONE,order confirm
+ORDER_DONE,order confirmed
+ORDER_DONE,done
+ORDER_DONE,ordr done
+FOLLOW_UP,follow up
+FOLLOW_UP,followup
+FOLLOW_UP,f/up
+FOLLOW_UP,fu
+CALL_BACK,call back
+CALL_BACK,callback
+CALL_BACK,cb
+HAS_PRODUCT,has product
+HAS_PRODUCT,product hai
+HAS_PRODUCT,already have
+NOT_INTERESTED,not interested
+NOT_INTERESTED,ni
+NOT_INTERESTED,nt interested
+NOT_INTERESTED,no interest
+REFUSED,refused
+REFUSED,refuse
+REFUSED,cancel
+PRICE_ISSUE,price issue
+PRICE_ISSUE,amount issue
+PRICE_ISSUE,costly
+PRICE_ISSUE,mehnga
+WRONG_NUMBER,wrong number
+WRONG_NUMBER,wrong no
+WRONG_NUMBER,wrng number
+UNDER_AGE,under age
+UNDER_AGE,underage
+UNDER_AGE,minor
+LANGUAGE_ISSUE,language issue
+LANGUAGE_ISSUE,language problem
+LANGUAGE_ISSUE,lang issue
+FAKE_LEAD,fake client
+FAKE_LEAD,fake lead
+FAKE_LEAD,fake
+DNC,dnc
+DNC,do not call

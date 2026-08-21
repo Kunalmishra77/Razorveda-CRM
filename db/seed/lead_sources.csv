@@ -1,0 +1,10 @@
+code,display_name,validity_days,expected_conversion_rate,attribution,employee_credit_percent,date_locale
+SHOPIFY,Shopify Orders,3,0.4500,UPSELL_DELTA,100,DMY
+META_ADS,Meta Ads Leads,7,0.0600,FULL_CREDIT,100,DMY
+WEB_WHATSAPP,Website WhatsApp,5,0.1200,FULL_CREDIT,100,DMY
+ADD_TO_CART,Add to Cart,2,0.2000,FULL_CREDIT,100,DMY
+WEB_CALL,Website Call,1,0.2800,FULL_CREDIT,100,DMY
+WA_CAMPAIGN,WhatsApp Campaign,7,0.1500,UPSELL_DELTA,100,DMY
+DELIVERED_REPEAT,Delivered / Repeat,30,0.1500,FULL_CREDIT,100,DMY
+RTO_RECOVERY,RTO Recovery,15,0.0900,FULL_CREDIT,100,DMY
+NC_REFUSED,NC / Refused Recovery,3,0.0700,FULL_CREDIT,100,DMY

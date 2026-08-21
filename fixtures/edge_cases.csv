@@ -1,0 +1,11 @@
+Date,Name,Number,Alt number,Product detail,Amount,Payment Mode,status
+20-08-26,Valid Customer One,9876543210,,Mamo Firm Cream 100gm,1450,COD,order done
+20-08-26,No Phone At All,,,Mamo Firm Cream,1450,COD,follow up
+20-08-26,Literal Text Phone,code,,B Reduce Cream,1450,COD,ringing
+20-08-26,Float Phone,9876543211.0,,Mamo Plus 2 in 1,1500,cod,order done
+20-08-26,Nine Digit Phone,987654321,,Geluslim Gel,1300,COD,ringing
+20-08-26,Eleven Digit Zero,09876543212,,Vg Tone Gel,1349,COD,order done
+20-08-26,Landline Prefix,5876543210,,Detox Drink,899,COD,not connect
+20-08-26,Insane Value,9876543213,,Mamo Firm Cream 100gm,98400,COD,order done
+27-08-26,Future Date Row,9876543214,,Keshghane Oil,999,COD,follow up
+20-08-26,Shared Alt Number,9876543215,9650121669,Lypo S Capsules,1000,COD,call back

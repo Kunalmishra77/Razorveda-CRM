@@ -1,0 +1,2079 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Razorveda CRM — Working Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#14161F; --ink2:#1D2130; --ink3:#2A3044; --inkline:#333A50;
+  --paper:#E7EAEE; --card:#FFFFFF; --line:#D4D9E0; --line2:#E8EBEF;
+  --text:#181B24; --muted:#606A7B; --faint:#8C95A4;
+  --brass:#C08A1E; --brass-l:#F2E3C2; --brass-d:#8A6110;
+  --vine:#1C6B49; --vine-l:#D9EBE2;
+  --clay:#B03A2C; --clay-l:#F6DDD9;
+  --indigo:#2E4A8F; --indigo-l:#DCE3F4;
+  --r:3px;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+  --cond:'Barlow Condensed','IBM Plex Sans',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--sans);background:var(--paper);color:var(--text);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.num,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+
+/* ── shell ─────────────────────────────────── */
+.shell{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
+.rail{background:var(--ink);color:#C7CDD9;position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column}
+.brand{padding:20px 18px 16px;border-bottom:1px solid var(--inkline)}
+.brand-mark{font-family:var(--cond);font-weight:700;font-size:23px;letter-spacing:.5px;color:#fff;line-height:1}
+.brand-mark em{font-style:normal;color:var(--brass)}
+.brand-sub{font-family:var(--cond);font-size:11.5px;letter-spacing:1.6px;text-transform:uppercase;color:#6F7A8D;margin-top:5px}
+.railgrp{padding:16px 0 4px}
+.railgrp-h{font-family:var(--cond);font-size:11px;letter-spacing:1.7px;text-transform:uppercase;color:#5C6678;padding:0 18px 7px}
+.railbtn{display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;color:#C7CDD9;font:inherit;font-size:13.5px;text-align:left;padding:8px 18px;cursor:pointer;border-left:2px solid transparent}
+.railbtn:hover{background:var(--ink2);color:#fff}
+.railbtn.on{background:var(--ink2);color:#fff;border-left-color:var(--brass)}
+.railbtn .ix{font-family:var(--mono);font-size:10.5px;color:#5C6678;width:16px}
+.railbtn.on .ix{color:var(--brass)}
+.railfoot{margin-top:auto;padding:14px 18px;border-top:1px solid var(--inkline);font-size:11.5px;color:#5C6678;line-height:1.6}
+
+.main{min-width:0;display:flex;flex-direction:column}
+.topbar{background:var(--card);border-bottom:1px solid var(--line);padding:0 26px;display:flex;align-items:center;gap:18px;height:56px;position:sticky;top:0;z-index:30}
+.crumb{font-family:var(--cond);font-size:13px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted)}
+.crumb b{color:var(--text);font-weight:600}
+.spacer{flex:1}
+.roleswitch{display:flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.roleswitch button{font:inherit;font-size:12px;padding:5px 12px;border:0;background:#fff;color:var(--muted);cursor:pointer}
+.roleswitch button.on{background:var(--ink);color:#fff}
+.who{display:flex;align-items:center;gap:9px;font-size:12.5px}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-family:var(--cond);font-size:13px;font-weight:600}
+.clock{font-family:var(--mono);font-size:12px;color:var(--muted)}
+
+.work{padding:24px 26px 60px;max-width:1440px;width:100%}
+.view{display:none}.view.on{display:block;animation:fade .22s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* ── headings ─────────────────────────────── */
+.eyebrow{font-family:var(--cond);font-size:11.5px;letter-spacing:2px;text-transform:uppercase;color:var(--brass-d);font-weight:600}
+h1.vt{font-family:var(--cond);font-size:34px;font-weight:600;letter-spacing:-.2px;line-height:1.1;margin:3px 0 6px}
+.vsub{color:var(--muted);max-width:78ch;font-size:13.5px}
+h2.sec{font-family:var(--cond);font-size:20px;font-weight:600;letter-spacing:.3px;margin:30px 0 12px;padding-bottom:7px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:10px}
+h2.sec span{font-family:var(--mono);font-size:11px;color:var(--faint);font-weight:400;letter-spacing:0}
+h3.ch{font-family:var(--cond);font-size:15.5px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+
+/* ── tabs ─────────────────────────────────── */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:18px 0 20px;overflow-x:auto}
+.tabs button{font:inherit;font-family:var(--cond);font-size:14.5px;letter-spacing:.8px;text-transform:uppercase;padding:9px 14px;border:0;background:none;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs button:hover{color:var(--text)}
+.tabs button.on{color:var(--text);border-bottom-color:var(--brass);font-weight:600}
+.pane{display:none}.pane.on{display:block;animation:fade .2s ease}
+
+/* ── cards ────────────────────────────────── */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r)}
+.card-h{padding:12px 16px;border-bottom:1px solid var(--line2);display:flex;align-items:center;gap:10px}
+.card-h h4{font-family:var(--cond);font-size:15px;font-weight:600;letter-spacing:.7px;text-transform:uppercase}
+.card-h .tag{margin-left:auto}
+.card-b{padding:16px}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(3,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}.g5{grid-template-columns:repeat(5,1fr)}
+.g21{grid-template-columns:2fr 1fr}.g12{grid-template-columns:1fr 2fr}
+@media(max-width:1100px){.g4,.g5{grid-template-columns:repeat(2,1fr)}.g3,.g21,.g12{grid-template-columns:1fr}}
+@media(max-width:760px){.shell{grid-template-columns:1fr}.rail{position:static;height:auto}.g2,.g4,.g5{grid-template-columns:1fr}}
+
+/* ── kpi ──────────────────────────────────── */
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 15px;position:relative;overflow:hidden}
+.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--brass)}
+.kpi.v::before{background:var(--vine)}.kpi.c::before{background:var(--clay)}.kpi.i::before{background:var(--indigo)}
+.kpi-l{font-family:var(--cond);font-size:11.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+.kpi-v{font-family:var(--mono);font-size:25px;font-weight:600;letter-spacing:-1px;margin:3px 0 2px}
+.kpi-d{font-size:11.5px;color:var(--faint)}
+.kpi-d b{font-family:var(--mono);font-weight:500}
+.up{color:var(--vine)}.down{color:var(--clay)}
+
+/* ── signature: attribution ribbon ────────── */
+.ribbon{height:11px;display:flex;border-radius:1px;overflow:hidden;background:#EDEFF3;border:1px solid var(--line)}
+.rb-base{background:var(--brass)}
+.rb-credit{background:var(--vine)}
+.rb-unreal{background:repeating-linear-gradient(135deg,#B9C2CF 0 3px,#E7EAEE 3px 6px)}
+.rb-claw{background:repeating-linear-gradient(135deg,var(--clay) 0 3px,#E6BDB6 3px 6px)}
+.rb-key{display:flex;gap:14px;font-size:11px;color:var(--muted);margin-top:6px;flex-wrap:wrap}
+.rb-key i{width:9px;height:9px;display:inline-block;margin-right:5px;vertical-align:-1px;border:1px solid rgba(0,0,0,.12)}
+
+/* ── tables ───────────────────────────────── */
+table{width:100%;border-collapse:collapse;font-size:12.8px}
+th{font-family:var(--cond);font-size:11.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);text-align:left;font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line);background:#FAFBFC;position:sticky;top:0}
+td{padding:8px 10px;border-bottom:1px solid var(--line2);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+tbody tr:hover{background:#FAFBFC}
+.r{text-align:right}.c{text-align:center}
+.tw{overflow-x:auto;max-height:none}
+.scroll{max-height:340px;overflow-y:auto}
+
+/* ── chips ────────────────────────────────── */
+.tag{display:inline-block;font-family:var(--cond);font-size:11px;letter-spacing:1.1px;text-transform:uppercase;font-weight:600;padding:2px 7px;border-radius:2px;border:1px solid}
+.t-ok{background:var(--vine-l);color:var(--vine);border-color:#B9D8C8}
+.t-warn{background:var(--brass-l);color:var(--brass-d);border-color:#E2CB94}
+.t-bad{background:var(--clay-l);color:var(--clay);border-color:#E8BDB6}
+.t-info{background:var(--indigo-l);color:var(--indigo);border-color:#BECBEA}
+.t-mute{background:#EEF0F3;color:var(--muted);border-color:var(--line)}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px}
+.d-ok{background:var(--vine)}.d-warn{background:var(--brass)}.d-bad{background:var(--clay)}.d-mute{background:#A9B2C0}
+
+/* ── bars ─────────────────────────────────── */
+.bar{height:7px;background:#EDEFF3;border-radius:1px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--brass)}
+.bar i.v{background:var(--vine)}.bar i.c{background:var(--clay)}.bar i.i{background:var(--indigo)}
+.hbar-row{display:grid;grid-template-columns:120px 1fr 74px;gap:10px;align-items:center;padding:5px 0;font-size:12.5px}
+.hbar{height:16px;background:#F1F3F6;position:relative}
+.hbar i{position:absolute;left:0;top:0;bottom:0;background:var(--ink3)}
+
+/* ── buttons / inputs ─────────────────────── */
+.btn{font:inherit;font-size:12.5px;padding:7px 13px;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:var(--r);cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+.btn:hover{background:#000}
+.btn.ghost{background:#fff;color:var(--text);border-color:var(--line)}
+.btn.ghost:hover{border-color:var(--muted);background:#FAFBFC}
+.btn.brass{background:var(--brass);border-color:var(--brass)}
+.btn.brass:hover{background:var(--brass-d);border-color:var(--brass-d)}
+.btn.sm{font-size:11.5px;padding:4px 9px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn:focus-visible,.railbtn:focus-visible,.tabs button:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+input,select{font:inherit;font-size:13px;padding:7px 9px;border:1px solid var(--line);border-radius:var(--r);background:#fff;width:100%}
+input:focus,select:focus{outline:2px solid var(--brass);outline-offset:-1px;border-color:var(--brass)}
+label.f{display:block;font-family:var(--cond);font-size:11.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.field{margin-bottom:12px}
+
+/* ── notes ────────────────────────────────── */
+.note{border-left:3px solid var(--brass);background:#FCF8EE;padding:11px 14px;font-size:12.8px;border-radius:0 var(--r) var(--r) 0}
+.note.bad{border-color:var(--clay);background:#FDF3F1}
+.note.ok{border-color:var(--vine);background:#F1F8F4}
+.note b{font-weight:600}
+.fixnote{display:flex;gap:9px;align-items:flex-start;font-size:12px;color:var(--muted);margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.fixnote .fx{font-family:var(--mono);font-size:10.5px;background:var(--clay);color:#fff;padding:1px 5px;border-radius:2px;flex:none}
+
+/* ── flow diagram bits ────────────────────── */
+.flowwrap{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:20px;overflow-x:auto}
+.flowwrap svg{display:block;min-width:840px;width:100%;height:auto}
+.sv-lab{font-family:'Barlow Condensed',sans-serif;font-size:12px;letter-spacing:1.2px;text-transform:uppercase;fill:#606A7B}
+.sv-t{font-family:'IBM Plex Sans',sans-serif;font-size:11.5px;fill:#181B24}
+.sv-n{font-family:'IBM Plex Mono',monospace;font-size:10.5px;fill:#8C95A4}
+.sv-w{fill:#fff}
+.dash{stroke-dasharray:4 4}
+@keyframes march{to{stroke-dashoffset:-16}}
+.flowline{animation:march 1.1s linear infinite}
+@media (prefers-reduced-motion:reduce){.flowline{animation:none}*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+/* ── pipeline stepper ─────────────────────── */
+.pipe{display:grid;grid-template-columns:repeat(7,1fr);gap:0;margin:14px 0}
+.pstep{border:1px solid var(--line);border-right:0;background:#fff;padding:11px 12px;position:relative}
+.pstep:last-child{border-right:1px solid var(--line)}
+.pstep.done{background:#F1F8F4;border-color:#C4DDD0}
+.pstep.act{background:#FCF8EE;border-color:#E2CB94;box-shadow:inset 0 -2px 0 var(--brass)}
+.pstep .pn{font-family:var(--mono);font-size:10px;color:var(--faint)}
+.pstep .pt{font-family:var(--cond);font-size:13px;font-weight:600;letter-spacing:.7px;text-transform:uppercase;margin:2px 0 3px}
+.pstep .pd{font-size:11px;color:var(--muted);line-height:1.35}
+.pstep .pc{font-family:var(--mono);font-size:11px;margin-top:5px;color:var(--vine)}
+@media(max-width:900px){.pipe{grid-template-columns:1fr}.pstep{border-right:1px solid var(--line);border-bottom:0}.pstep:last-child{border-bottom:1px solid var(--line)}}
+
+/* ── worklist ─────────────────────────────── */
+.wl-grp{border:1px solid var(--line);border-radius:var(--r);margin-bottom:10px;background:#fff;overflow:hidden}
+.wl-h{padding:9px 14px;background:#FAFBFC;border-bottom:1px solid var(--line2);display:flex;align-items:center;gap:9px;font-family:var(--cond);font-size:14px;letter-spacing:.9px;text-transform:uppercase;font-weight:600}
+.wl-h .n{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:0}
+.wl-i{padding:10px 14px;border-bottom:1px solid var(--line2);display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;cursor:pointer}
+.wl-i:last-child{border-bottom:0}
+.wl-i:hover{background:#FAFBFC}
+.wl-i.sel{background:#FCF8EE;box-shadow:inset 3px 0 0 var(--brass)}
+.wl-n{font-weight:600;font-size:13px}
+.wl-m{font-size:11.5px;color:var(--muted);margin-top:2px}
+
+/* ── phone mask ───────────────────────────── */
+.phone{font-family:var(--mono);font-size:15px;letter-spacing:.5px;display:inline-flex;align-items:center;gap:9px}
+.masked{color:var(--muted)}
+.revealed{color:var(--clay);background:var(--clay-l);padding:1px 5px;border-radius:2px}
+
+/* ── misc ─────────────────────────────────── */
+.stat{display:flex;justify-content:space-between;padding:5px 0;font-size:12.5px;border-bottom:1px solid var(--line2)}
+.stat:last-child{border-bottom:0}
+.stat b{font-family:var(--mono);font-weight:500}
+.legend{font-size:11.5px;color:var(--faint);margin-top:8px}
+.hint{font-size:11.5px;color:var(--faint);font-style:italic}
+.timeline{border-left:2px solid var(--line);padding-left:16px;margin-left:6px}
+.tl-i{position:relative;padding-bottom:14px}
+.tl-i::before{content:"";position:absolute;left:-21px;top:5px;width:8px;height:8px;border-radius:50%;background:var(--brass);border:2px solid #fff;box-shadow:0 0 0 1px var(--line)}
+.tl-t{font-family:var(--mono);font-size:11px;color:var(--brass-d)}
+.tl-x{font-size:12.8px;margin-top:1px}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.split>div{padding:16px}
+.split>div:first-child{border-right:1px solid var(--line);background:#FDF3F1}
+.split>div:last-child{background:#F1F8F4}
+.kbd{font-family:var(--mono);font-size:11px;background:#EEF0F3;border:1px solid var(--line);border-bottom-width:2px;border-radius:3px;padding:1px 5px}
+.watermark{position:relative;overflow:hidden}
+.watermark::after{content:"RIYA CHAUHAN · EMP-004 · 20-AUG-2026 14:22 · 103.21.44.9";position:absolute;inset:0;display:grid;place-items:center;font-family:var(--mono);font-size:13px;color:rgba(20,22,31,.055);transform:rotate(-24deg) scale(1.5);pointer-events:none;white-space:nowrap;letter-spacing:2px}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ══ RAIL ══ -->
+<nav class="rail">
+  <div class="brand">
+    <div class="brand-mark">RAZOR<em>VEDA</em></div>
+    <div class="brand-sub">CRM &amp; MIS Console</div>
+  </div>
+
+  <div class="railgrp">
+    <div class="railgrp-h">Architecture</div>
+    <button class="railbtn on" data-view="v-flow"><span class="ix">01</span>System flow</button>
+    <button class="railbtn" data-view="v-day"><span class="ix">02</span>Day in the life</button>
+  </div>
+  <div class="railgrp">
+    <div class="railgrp-h">Admin portal</div>
+    <button class="railbtn" data-view="v-admin"><span class="ix">03</span>Admin workspace</button>
+  </div>
+  <div class="railgrp">
+    <div class="railgrp-h">Employee portal</div>
+    <button class="railbtn" data-view="v-emp"><span class="ix">04</span>Employee workspace</button>
+  </div>
+  <div class="railgrp">
+    <div class="railgrp-h">Output</div>
+    <button class="railbtn" data-view="v-mis"><span class="ix">05</span>Reports &amp; MIS</button>
+    <button class="railbtn" data-view="v-rules"><span class="ix">06</span>Lifecycle &amp; rules</button>
+  </div>
+
+  <div class="railfoot">
+    Prototype v1 · 20 Aug 2026<br>
+    Data shown is real, drawn from<br>the two workbooks supplied.
+  </div>
+</nav>
+
+<!-- ══ MAIN ══ -->
+<div class="main">
+  <header class="topbar">
+    <div class="crumb" id="crumb">Architecture / <b>System flow</b></div>
+    <div class="spacer"></div>
+    <div class="roleswitch">
+      <button id="rAdmin" class="on">Admin view</button>
+      <button id="rEmp">Employee view</button>
+    </div>
+    <div class="who">
+      <span class="avatar" id="avi">SN</span>
+      <div>
+        <div style="font-weight:600" id="whoName">Sunita Negi</div>
+        <div style="font-size:11px;color:var(--muted)" id="whoRole">Admin · full access</div>
+      </div>
+    </div>
+    <div class="clock">20 Aug · 09:04</div>
+  </header>
+
+  <div class="work">
+
+<!-- ═══════════════ 01 SYSTEM FLOW ═══════════════ -->
+<section class="view on" id="v-flow">
+  <div class="eyebrow">01 — Architecture</div>
+  <h1 class="vt">How data moves through the system</h1>
+  <p class="vsub">Nine upload channels feed one ingestion pipeline. The pipeline produces one customer record and one order ledger. Everything downstream — assignment, scoring, incentive, every report — reads from those two things and nothing else.</p>
+
+  <h2 class="sec">End-to-end flow <span>source → ingestion → core → intelligence → screen</span></h2>
+  <div class="flowwrap">
+    <svg viewBox="0 0 1180 560" role="img" aria-label="End to end architecture flow">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#8C95A4"/>
+        </marker>
+        <marker id="arb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#C08A1E"/>
+        </marker>
+      </defs>
+
+      <!-- L1 sources -->
+      <text x="20" y="24" class="sv-lab">L1 · Sources — admin uploads a file, nothing else</text>
+      <g>
+        <rect x="20" y="34" width="128" height="34" fill="#fff" stroke="#D4D9E0"/><text x="30" y="49" class="sv-t">Shopify orders</text><text x="30" y="62" class="sv-n">66 rows/day</text>
+        <rect x="156" y="34" width="128" height="34" fill="#fff" stroke="#D4D9E0"/><text x="166" y="49" class="sv-t">Meta ads leads</text><text x="166" y="62" class="sv-n">30 rows/day</text>
+        <rect x="292" y="34" width="128" height="34" fill="#fff" stroke="#D4D9E0"/><text x="302" y="49" class="sv-t">Website WhatsApp</text><text x="302" y="62" class="sv-n">42 rows/day</text>
+        <rect x="428" y="34" width="128" height="34" fill="#fff" stroke="#D4D9E0"/><text x="438" y="49" class="sv-t">Add to cart</text><text x="438" y="62" class="sv-n">7 rows/day</text>
+        <rect x="564" y="34" width="128" height="34" fill="#fff" stroke="#D4D9E0"/><text x="574" y="49" class="sv-t">Website call</text><text x="574" y="62" class="sv-n">3 rows/day</text>
+        <rect x="700" y="34" width="128" height="34" fill="#fff" stroke="#D4D9E0"/><text x="710" y="49" class="sv-t">WA campaign</text><text x="710" y="62" class="sv-n">10 rows/day</text>
+        <rect x="836" y="34" width="128" height="34" fill="#fff" stroke="#D4D9E0"/><text x="846" y="49" class="sv-t">Delivered data</text><text x="846" y="62" class="sv-n">125 rows/day</text>
+        <rect x="972" y="34" width="88" height="34" fill="#fff" stroke="#D4D9E0"/><text x="982" y="49" class="sv-t">RTO</text><text x="982" y="62" class="sv-n">24/day</text>
+        <rect x="1068" y="34" width="92" height="34" fill="#fff" stroke="#D4D9E0"/><text x="1078" y="49" class="sv-t">NC / refused</text><text x="1078" y="62" class="sv-n">11/day</text>
+      </g>
+      <path d="M590 74 L590 96" stroke="#8C95A4" stroke-width="1.4" marker-end="url(#ar)"/>
+
+      <!-- L2 ingestion -->
+      <text x="20" y="118" class="sv-lab">L2 · Ingestion — AI proposes the mapping, deterministic code does the work</text>
+      <rect x="20" y="128" width="1140" height="72" fill="#14161F" stroke="#14161F"/>
+      <g>
+        <text x="36" y="152" class="sv-w" style="font-family:'IBM Plex Sans';font-size:11.5px">1 Fingerprint</text>
+        <text x="36" y="168" style="font-family:'IBM Plex Mono';font-size:10px;fill:#7C879B">SHA-256, no re-upload</text>
+        <text x="196" y="152" class="sv-w" style="font-family:'IBM Plex Sans';font-size:11.5px">2 Column map</text>
+        <text x="196" y="168" style="font-family:'IBM Plex Mono';font-size:10px;fill:#7C879B">template hit 95%</text>
+        <text x="356" y="152" class="sv-w" style="font-family:'IBM Plex Sans';font-size:11.5px">3 Normalise</text>
+        <text x="356" y="168" style="font-family:'IBM Plex Mono';font-size:10px;fill:#7C879B">phone·date·pay·SKU</text>
+        <text x="516" y="152" class="sv-w" style="font-family:'IBM Plex Sans';font-size:11.5px">4 Identity</text>
+        <text x="516" y="168" style="font-family:'IBM Plex Mono';font-size:10px;fill:#7C879B">new / existing / merge</text>
+        <text x="676" y="152" class="sv-w" style="font-family:'IBM Plex Sans';font-size:11.5px">5 Validate</text>
+        <text x="676" y="168" style="font-family:'IBM Plex Mono';font-size:10px;fill:#7C879B">row rules + shift check</text>
+        <text x="836" y="152" class="sv-w" style="font-family:'IBM Plex Sans';font-size:11.5px">6 Review</text>
+        <text x="836" y="168" style="font-family:'IBM Plex Mono';font-size:10px;fill:#C08A1E">exceptions only · 3–8%</text>
+        <text x="996" y="152" class="sv-w" style="font-family:'IBM Plex Sans';font-size:11.5px">7 Commit</text>
+        <text x="996" y="168" style="font-family:'IBM Plex Mono';font-size:10px;fill:#7C879B">reversible 7 days</text>
+        <path d="M175 158 L188 158 M335 158 L348 158 M495 158 L508 158 M655 158 L668 158 M815 158 L828 158 M975 158 L988 158" stroke="#C08A1E" stroke-width="1.4" class="flowline" stroke-dasharray="4 4"/>
+      </g>
+      <path d="M590 206 L590 232" stroke="#8C95A4" stroke-width="1.4" marker-end="url(#ar)"/>
+
+      <!-- L3 core -->
+      <text x="20" y="254" class="sv-lab">L3 · Core domain — one customer, one order ledger, append-only</text>
+      <rect x="180" y="264" width="200" height="66" fill="#fff" stroke="#C08A1E" stroke-width="2"/>
+      <text x="196" y="286" class="sv-t" style="font-weight:600">Customer golden record</text>
+      <text x="196" y="302" class="sv-n">surrogate id · phone as key</text>
+      <text x="196" y="318" class="sv-n">type · stage · LTV · due date</text>
+
+      <rect x="408" y="264" width="200" height="66" fill="#fff" stroke="#C08A1E" stroke-width="2"/>
+      <text x="424" y="286" class="sv-t" style="font-weight:600">Order ledger</text>
+      <text x="424" y="302" class="sv-n">header + line = product P&amp;L</text>
+      <text x="424" y="318" class="sv-n">status events, immutable</text>
+
+      <rect x="636" y="264" width="200" height="66" fill="#fff" stroke="#D4D9E0"/>
+      <text x="652" y="286" class="sv-t" style="font-weight:600">Lead &amp; activity log</text>
+      <text x="652" y="302" class="sv-n">every dial, disposition, note</text>
+      <text x="652" y="318" class="sv-n">CD/ND · Fq · follow-up</text>
+
+      <rect x="864" y="264" width="200" height="66" fill="#fff" stroke="#1C6B49" stroke-width="2"/>
+      <text x="880" y="286" class="sv-t" style="font-weight:600">Attribution ledger</text>
+      <text x="880" y="302" class="sv-n">booked · realised · clawback</text>
+      <text x="880" y="318" class="sv-n">the only source of incentive</text>
+
+      <path d="M380 297 L404 297 M608 297 L632 297 M836 297 L860 297" stroke="#8C95A4" stroke-width="1.4" marker-end="url(#ar)"/>
+      <path d="M590 336 L590 362" stroke="#8C95A4" stroke-width="1.4" marker-end="url(#ar)"/>
+
+      <!-- L4 semantic -->
+      <text x="20" y="384" class="sv-lab">L4 · Semantic layer — every KPI defined once, in one place</text>
+      <rect x="20" y="394" width="1140" height="42" fill="#F1F8F4" stroke="#1C6B49"/>
+      <text x="36" y="420" class="sv-t">Metric dictionary → certified SQL views. Connectivity · CD/ND · Conversion · Booked vs Realised · RTO% · Required Booking · Upsell Index. No report computes its own arithmetic.</text>
+      <path d="M590 442 L590 466" stroke="#8C95A4" stroke-width="1.4" marker-end="url(#ar)"/>
+
+      <!-- L5/6 -->
+      <text x="20" y="488" class="sv-lab">L5/L6 · Intelligence &amp; presentation</text>
+      <rect x="20" y="498" width="216" height="44" fill="#fff" stroke="#D4D9E0"/><text x="34" y="518" class="sv-t">Efficiency score</text><text x="34" y="533" class="sv-n">nightly · 6 components</text>
+      <rect x="248" y="498" width="216" height="44" fill="#fff" stroke="#C08A1E" stroke-width="2"/><text x="262" y="518" class="sv-t">Assignment console</text><text x="262" y="533" class="sv-n">admin picks · bulk assign</text>
+      <rect x="476" y="498" width="216" height="44" fill="#fff" stroke="#D4D9E0"/><text x="490" y="518" class="sv-t">Repeat-due engine</text><text x="490" y="533" class="sv-n">delivered + usage days</text>
+      <rect x="704" y="498" width="216" height="44" fill="#fff" stroke="#D4D9E0"/><text x="718" y="518" class="sv-t">RTO risk model</text><text x="718" y="533" class="sv-n">pre-dispatch flag</text>
+      <rect x="932" y="498" width="228" height="44" fill="#14161F" stroke="#14161F"/><text x="946" y="518" class="sv-w" style="font-family:'IBM Plex Sans';font-size:11.5px">Portals · dashboards · digests</text><text x="946" y="533" style="font-family:'IBM Plex Mono';font-size:10px;fill:#7C879B">admin · BDE · exec · WhatsApp</text>
+    </svg>
+  </div>
+
+  <h2 class="sec">The seven-stage pipeline, live <span>click to run a simulated batch</span></h2>
+  <div class="pipe" id="pipe">
+    <div class="pstep" data-c="512 rows read"><div class="pn">STAGE 1</div><div class="pt">Fingerprint</div><div class="pd">File hashed. Duplicate uploads blocked before anything is written.</div><div class="pc"></div></div>
+    <div class="pstep" data-c="template hit"><div class="pn">STAGE 2</div><div class="pt">Column map</div><div class="pd">Saved template matched on header signature. No AI call today.</div><div class="pc"></div></div>
+    <div class="pstep" data-c="512 cleaned"><div class="pn">STAGE 3</div><div class="pt">Normalise</div><div class="pd">Phone, date, payment split, encoding, disposition, SKU.</div><div class="pc"></div></div>
+    <div class="pstep" data-c="188 existing"><div class="pn">STAGE 4</div><div class="pt">Identity</div><div class="pd">Matched against 4,812 customers. New vs existing decided here.</div><div class="pc"></div></div>
+    <div class="pstep" data-c="486 valid"><div class="pn">STAGE 5</div><div class="pt">Validate</div><div class="pd">Row rules plus column-shift detection on the whole batch.</div><div class="pc"></div></div>
+    <div class="pstep" data-c="26 to review"><div class="pn">STAGE 6</div><div class="pt">Review</div><div class="pd">Admin sees only what failed. Clean rows are never shown.</div><div class="pc"></div></div>
+    <div class="pstep" data-c="486 committed"><div class="pn">STAGE 7</div><div class="pt">Commit</div><div class="pd">Leads land in the unassigned pool, ready for the admin to distribute.</div><div class="pc"></div></div>
+  </div>
+  <button class="btn brass" id="runPipe">Run today's batch</button>
+  <span class="hint" id="pipeMsg" style="margin-left:12px"></span>
+
+  <h2 class="sec">What replaces what <span>current artefact → new module</span></h2>
+  <div class="card"><div class="tw"><table>
+    <thead><tr><th style="width:240px">Today</th><th style="width:240px">Becomes</th><th>What changes</th></tr></thead>
+    <tbody>
+      <tr><td>9 employee Google Sheets</td><td><b>Employee portal</b></td><td>Data lives server-side. A rep leaving no longer takes four months of customer PII with them.</td></tr>
+      <tr><td><span class="mono">Team Audit</span> tab</td><td><b>Data block performance</b></td><td>Auto-populated from leads and batches. No IMPORTRANGE, no manual entry.</td></tr>
+      <tr><td><span class="mono">Score board</span> tab</td><td><b>Live scoreboard</b></td><td>Reads a scoring table, not 72 hardcoded cell addresses that break on an inserted row.</td></tr>
+      <tr><td><span class="mono">Achieve Report</span> tab</td><td><b>Target vs achievement</b></td><td>Integer order counts, correct product split, rep-specific RTO buffer.</td></tr>
+      <tr><td><span class="mono">Follow up Sheet</span></td><td><b>Follow-up queue</b></td><td>A live worklist that pushes to the rep, not a report someone remembers to open.</td></tr>
+      <tr><td><span class="mono">RTO Sheet</span> + <span class="mono">nc refused</span></td><td><b>RTO &amp; NDR console</b></td><td>Recovery leads created automatically and routed back to the owning rep.</td></tr>
+      <tr><td>Manual MIS preparation</td><td><b>Scheduled digests</b></td><td>07:30 rep plan, 08:00 admin exceptions, 21:00 management one-pager.</td></tr>
+    </tbody>
+  </table></div></div>
+</section>
+
+<!-- ═══════════════ 02 DAY IN THE LIFE ═══════════════ -->
+<section class="view" id="v-day">
+  <div class="eyebrow">02 — Operating rhythm</div>
+  <h1 class="vt">A day, before and after</h1>
+  <p class="vsub">The point of the build is not that screens look nicer. It is that the admin's morning collapses from hours of copy-paste into roughly twenty minutes of exception handling, and the rep stops maintaining a spreadsheet on the side.</p>
+
+  <h2 class="sec">Admin morning</h2>
+  <div class="split">
+    <div>
+      <span class="tag t-bad">Today</span>
+      <h3 class="ch" style="margin:10px 0 8px">Nine sheets, by hand</h3>
+      <div class="timeline">
+        <div class="tl-i"><div class="tl-t">09:00</div><div class="tl-x">Download Shopify, Meta, AiSensy exports.</div></div>
+        <div class="tl-i"><div class="tl-t">09:20</div><div class="tl-x">Open each rep's sheet. Paste rows into the right tab, hoping columns line up.</div></div>
+        <div class="tl-i"><div class="tl-t">10:15</div><div class="tl-x">Eyeball for repeat customers. Miss most of them — 39% of customers already exist somewhere else.</div></div>
+        <div class="tl-i"><div class="tl-t">11:00</div><div class="tl-x">Decide who gets which leads, then paste them row by row into seven separate sheets.</div></div>
+        <div class="tl-i"><div class="tl-t">12:30</div><div class="tl-x">Chase reps for yesterday's numbers to update the audit sheet.</div></div>
+        <div class="tl-i"><div class="tl-t">16:00</div><div class="tl-x">Rebuild the MIS. Discover a formula is reading the wrong row again.</div></div>
+      </div>
+    </div>
+    <div>
+      <span class="tag t-ok">After</span>
+      <h3 class="ch" style="margin:10px 0 8px">Nine drop boxes, one review</h3>
+      <div class="timeline">
+        <div class="tl-i"><div class="tl-t">09:00</div><div class="tl-x">Open the console. Overnight digest already read.</div></div>
+        <div class="tl-i"><div class="tl-t">09:05</div><div class="tl-x">Drag nine files into nine boxes.</div></div>
+        <div class="tl-i"><div class="tl-t">09:10</div><div class="tl-x">Pipeline runs. 486 clean, 26 flagged.</div></div>
+        <div class="tl-i"><div class="tl-t">09:12</div><div class="tl-x">Review the 26. Bulk-accept warnings, resolve four merges.</div></div>
+        <div class="tl-i"><div class="tl-t">09:18</div><div class="tl-x">Commit, then bulk-assign the pool. Three clicks per rep.</div></div>
+        <div class="tl-i"><div class="tl-t">09:25</div><div class="tl-x">Done. Rest of the day is exceptions only.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="sec">Rep day <span>Riya Chauhan · EMP-004</span></h2>
+  <div class="flowwrap">
+    <svg viewBox="0 0 1120 250" role="img" aria-label="Employee daily flow">
+      <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8C95A4"/></marker></defs>
+      <g>
+        <rect x="14" y="40" width="150" height="58" fill="#14161F"/>
+        <text x="28" y="63" class="sv-w" style="font-family:'IBM Plex Sans';font-size:11.5px">Login + 2FA</text>
+        <text x="28" y="79" style="font-family:'IBM Plex Mono';font-size:10px;fill:#7C879B">device bound</text>
+        <text x="28" y="92" style="font-family:'IBM Plex Mono';font-size:10px;fill:#7C879B">shift window only</text>
+
+        <rect x="188" y="40" width="150" height="58" fill="#fff" stroke="#D4D9E0"/>
+        <text x="202" y="63" class="sv-t" style="font-weight:600">My day</text>
+        <text x="202" y="79" class="sv-n">gap to target</text>
+        <text x="202" y="92" class="sv-n">required run-rate</text>
+
+        <rect x="362" y="40" width="150" height="58" fill="#fff" stroke="#C08A1E" stroke-width="2"/>
+        <text x="376" y="63" class="sv-t" style="font-weight:600">Worklist</text>
+        <text x="376" y="79" class="sv-n">overdue → due →</text>
+        <text x="376" y="92" class="sv-n">hot → fresh → ageing</text>
+
+        <rect x="536" y="40" width="150" height="58" fill="#fff" stroke="#D4D9E0"/>
+        <text x="550" y="63" class="sv-t" style="font-weight:600">Dial from handset</text>
+        <text x="550" y="79" class="sv-n">number shown in portal</text>
+        <text x="550" y="92" class="sv-n">tap "mark dialled"</text>
+
+        <rect x="710" y="40" width="150" height="58" fill="#fff" stroke="#D4D9E0"/>
+        <text x="724" y="63" class="sv-t" style="font-weight:600">Disposition</text>
+        <text x="724" y="79" class="sv-n">closed list, mandatory</text>
+        <text x="724" y="92" class="sv-n">follow-up date forced</text>
+
+        <rect x="884" y="40" width="150" height="58" fill="#fff" stroke="#1C6B49" stroke-width="2"/>
+        <text x="898" y="63" class="sv-t" style="font-weight:600">Order + credit</text>
+        <text x="898" y="79" class="sv-n">split shown live</text>
+        <text x="898" y="92" class="sv-n">realises on delivery</text>
+
+        <path d="M166 69 L184 69 M340 69 L358 69 M514 69 L532 69 M688 69 L706 69 M862 69 L880 69" stroke="#8C95A4" stroke-width="1.4" marker-end="url(#ar2)"/>
+      </g>
+      <path d="M959 100 L959 132" stroke="#8C95A4" stroke-width="1.4" marker-end="url(#ar2)"/>
+      <rect x="14" y="134" width="1092" height="42" fill="#F1F8F4" stroke="#1C6B49"/>
+      <text x="28" y="160" class="sv-t">Everything above writes one activity row and, on an order, one ledger entry. Nothing is typed twice. The MIS is a read of these rows — nobody prepares it.</text>
+      <text x="14" y="206" class="sv-lab">No spreadsheet is opened at any point in this flow</text>
+      <text x="14" y="228" class="sv-n">Follow-ups return to the worklist automatically · untouched leads flag at 48h and return to the pool at 72h · delivered orders schedule the repeat-purchase call</text>
+    </svg>
+  </div>
+</section>
+
+<!-- ═══════════════ 03 ADMIN ═══════════════ -->
+<section class="view" id="v-admin">
+  <div class="eyebrow">03 — Admin portal</div>
+  <h1 class="vt">Admin workspace</h1>
+  <p class="vsub">Two roles exist in the system and no others: <b>Admin</b> and <b>Employee</b>. Sunita, Sonam and Sonia share one identical Admin role that carries everything — uploads, assignment, customers, orders, masters, security and the entire MIS. Every screen is exception-driven: it shows what needs a decision, not what is already fine.</p>
+
+  <div class="tabs" data-tabs="admin">
+    <button class="on" data-p="a1">Upload centre</button>
+    <button data-p="a2">Exception review</button>
+    <button data-p="a3">Lead assignment</button>
+    <button data-p="a4">Employees</button>
+    <button data-p="a5">Customer 360</button>
+    <button data-p="a6">Orders &amp; RTO</button>
+    <button data-p="a7">Master data</button>
+    <button data-p="a8">Audit &amp; security</button>
+  </div>
+
+  <!-- A1 upload -->
+  <div class="pane on" id="p-a1">
+    <div class="grid g4" style="margin-bottom:18px">
+      <div class="kpi"><div class="kpi-l">Files today</div><div class="kpi-v">7<span style="font-size:15px;color:var(--faint)">/9</span></div><div class="kpi-d">2 channels pending upload</div></div>
+      <div class="kpi v"><div class="kpi-l">Rows committed</div><div class="kpi-v">486</div><div class="kpi-d">of 512 read</div></div>
+      <div class="kpi c"><div class="kpi-l">Needs review</div><div class="kpi-v">26</div><div class="kpi-d">5.1% exception rate</div></div>
+      <div class="kpi i"><div class="kpi-l">Admin time today</div><div class="kpi-v">18<span style="font-size:15px;color:var(--faint)">min</span></div><div class="kpi-d">target under 25</div></div>
+    </div>
+
+    <div class="grid g3" id="dropgrid"></div>
+
+    <div class="note" style="margin-top:16px"><b>Why a fingerprint matters.</b> Daily Shopify exports overlap. Without a file hash and a row-level natural key, uploading yesterday's file again would silently double-count revenue. Here the second upload is refused, not merged.</div>
+
+    <h2 class="sec">Recent batches <span>rollback available for 7 days</span></h2>
+    <div class="card"><div class="tw"><table>
+      <thead><tr><th>Batch</th><th>Channel</th><th>File</th><th class="r">Read</th><th class="r">New</th><th class="r">Merged</th><th class="r">Flagged</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        <tr><td class="mono">B-20826-07</td><td>Delivered data</td><td class="mono">delivered_20aug.xlsx</td><td class="r mono">125</td><td class="r mono">31</td><td class="r mono">94</td><td class="r mono">6</td><td><span class="tag t-warn">In review</span></td><td class="r"><button class="btn ghost sm">Open</button></td></tr>
+        <tr><td class="mono">B-20826-06</td><td>Shopify orders</td><td class="mono">shopify_orders_20aug.csv</td><td class="r mono">66</td><td class="r mono">48</td><td class="r mono">18</td><td class="r mono">4</td><td><span class="tag t-ok">Committed</span></td><td class="r"><button class="btn ghost sm">Rollback</button></td></tr>
+        <tr><td class="mono">B-20826-05</td><td>WA campaign</td><td class="mono">aisensy_broadcast.xlsx</td><td class="r mono">42</td><td class="r mono">39</td><td class="r mono">3</td><td class="r mono">11</td><td><span class="tag t-bad">Column shift</span></td><td class="r"><button class="btn ghost sm">Inspect</button></td></tr>
+        <tr><td class="mono">B-20826-04</td><td>Meta ads leads</td><td class="mono">meta_leads_20aug.csv</td><td class="r mono">30</td><td class="r mono">30</td><td class="r mono">0</td><td class="r mono">2</td><td><span class="tag t-ok">Committed</span></td><td class="r"><button class="btn ghost sm">Rollback</button></td></tr>
+        <tr><td class="mono">B-20826-03</td><td>RTO</td><td class="mono">rto_report_20aug.xlsx</td><td class="r mono">24</td><td class="r mono">0</td><td class="r mono">24</td><td class="r mono">1</td><td><span class="tag t-ok">Committed</span></td><td class="r"><button class="btn ghost sm">Rollback</button></td></tr>
+        <tr><td class="mono">B-19826-11</td><td>Shopify orders</td><td class="mono">shopify_orders_20aug.csv</td><td class="r mono">—</td><td class="r mono">—</td><td class="r mono">—</td><td class="r mono">—</td><td><span class="tag t-mute">Refused · duplicate file</span></td><td class="r"></td></tr>
+      </tbody>
+    </table></div></div>
+  </div>
+
+  <!-- A2 exceptions -->
+  <div class="pane" id="p-a2">
+    <div class="grid g21">
+      <div class="card">
+        <div class="card-h"><h4>Exception queue</h4><span class="tag t-warn tag">26 rows</span></div>
+        <div class="tw"><table>
+          <thead><tr><th style="width:28px"></th><th>Row</th><th>Issue</th><th>Value as uploaded</th><th>Proposed</th><th></th></tr></thead>
+          <tbody>
+            <tr><td><span class="dot d-bad"></span></td><td class="mono">R-041</td><td>Column shift detected</td><td class="mono">Order Status = "Tapas Mandal"</td><td>Shift columns 3→4 right</td><td class="r"><button class="btn brass sm">Fix batch</button></td></tr>
+            <tr><td><span class="dot d-warn"></span></td><td class="mono">R-088</td><td>Duplicate customer</td><td class="mono">9848996231 · SK Muntaz</td><td>Merge into CUST-2211 (3 orders)</td><td class="r"><button class="btn ghost sm">Merge</button></td></tr>
+            <tr><td><span class="dot d-warn"></span></td><td class="mono">R-092</td><td>Unresolved product</td><td>"Mamo Firm Brea…"</td><td>SKU-BC-014 Mamo Firm Cream 100gm <span class="mono" style="color:var(--vine)">0.94</span></td><td class="r"><button class="btn ghost sm">Accept</button></td></tr>
+            <tr><td><span class="dot d-bad"></span></td><td class="mono">R-103</td><td>No valid mobile</td><td class="mono">code</td><td>Hold — cannot key this row</td><td class="r"><button class="btn ghost sm">Park</button></td></tr>
+            <tr><td><span class="dot d-warn"></span></td><td class="mono">R-118</td><td>Payment string unparsed</td><td class="mono">"300 preapaid &amp; 2300 cod"</td><td>Prepaid 300 · COD 2300 · PARTIAL</td><td class="r"><button class="btn ghost sm">Accept</button></td></tr>
+            <tr><td><span class="dot d-warn"></span></td><td class="mono">R-131</td><td>Encoding damaged</td><td class="mono">à¤®à¥‹à¤¹à¤¨</td><td>मोहन → repair to UTF-8</td><td class="r"><button class="btn ghost sm">Accept</button></td></tr>
+            <tr><td><span class="dot d-warn"></span></td><td class="mono">R-146</td><td>Ambiguous date</td><td class="mono">2026-12-06</td><td>06 Dec or 12 Jun — source rule says 06 Dec</td><td class="r"><button class="btn ghost sm">Accept</button></td></tr>
+            <tr><td><span class="dot d-bad"></span></td><td class="mono">R-159</td><td>Value sanity</td><td class="mono">₹98,400 on 1× SKU MRP ₹899</td><td>Hold for admin confirmation</td><td class="r"><button class="btn ghost sm">Park</button></td></tr>
+            <tr><td><span class="dot d-warn"></span></td><td class="mono">R-167</td><td>Unknown disposition</td><td class="mono">"bsy cal cut"</td><td>BUSY_CALL_CUT — add alias?</td><td class="r"><button class="btn ghost sm">Add alias</button></td></tr>
+          </tbody>
+        </table></div>
+        <div class="card-b" style="border-top:1px solid var(--line2);display:flex;gap:8px">
+          <button class="btn brass">Accept all 19 warnings</button>
+          <button class="btn ghost">Export exception list</button>
+          <span class="hint" style="margin-left:auto;align-self:center">7 errors must be resolved individually</span>
+        </div>
+      </div>
+
+      <div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-h"><h4>Column map used</h4><span class="tag t-ok tag">Template hit</span></div>
+          <div class="card-b" style="font-size:12.3px">
+            <div class="stat"><span class="mono">Phone no</span><b>→ primary_phone</b></div>
+            <div class="stat"><span class="mono">CustomerName</span><b>→ full_name</b></div>
+            <div class="stat"><span class="mono">ProductDeatil</span><b>→ product_text</b></div>
+            <div class="stat"><span class="mono">PaymentMode</span><b>→ payment_raw</b></div>
+            <div class="stat"><span class="mono">CallerName</span><b>→ employee_ref</b></div>
+            <div class="stat"><span class="mono">Category</span><b>→ client_category</b></div>
+            <div class="legend">Header signature matched template T-SHOP-03, confirmed 14 Jun, used 61 times since.</div>
+          </div>
+        </div>
+        <div class="note bad"><b>Column shift is caught here, not in December.</b> When more than 20% of a column fails its type check the whole batch stops. In the April sheet, forty customer names ended up inside the Order Status column and nothing objected.</div>
+        <div class="note" style="margin-top:12px"><b>The merge threshold.</b> Above 0.95 confidence customers merge automatically. Between 0.80 and 0.95 they land in this queue. Below that, a new record is created.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- A3 assignment -->
+  <div class="pane" id="p-a3">
+    <div class="note" style="margin-bottom:16px"><b>Nothing is assigned automatically.</b> The pool sits here until an admin distributes it. What changes is the mechanics: filter the pool, tick a block of leads, pick a rep, assign — 60 leads in three clicks instead of sixty rows of copy-paste into sixty spreadsheet cells.</div>
+
+    <div class="grid g4" style="margin-bottom:16px">
+      <div class="kpi"><div class="kpi-l">Unassigned pool</div><div class="kpi-v" id="poolCount">486</div><div class="kpi-d">from this morning's 7 files</div></div>
+      <div class="kpi c"><div class="kpi-l">Ageing in pool</div><div class="kpi-v">61</div><div class="kpi-d">over 24h · assign or they decay</div></div>
+      <div class="kpi v"><div class="kpi-l">Assigned today</div><div class="kpi-v" id="assignedToday">0</div><div class="kpi-d">across 7 reps</div></div>
+      <div class="kpi i"><div class="kpi-l">Suggested split</div><div class="kpi-v">7</div><div class="kpi-d">advisory only — you decide</div></div>
+    </div>
+
+    <div class="grid g21">
+      <div class="card">
+        <div class="card-h"><h4>Unassigned lead pool</h4><span class="tag t-mute tag" id="selCount">0 selected</span></div>
+        <div class="card-b" style="border-bottom:1px solid var(--line2);padding:12px 16px">
+          <div class="grid g4" style="gap:10px">
+            <div><label class="f">Source</label><select id="fSrc"><option>All sources</option><option>Shopify orders</option><option>Meta ads leads</option><option>WhatsApp campaign</option><option>Delivered / repeat</option><option>RTO recovery</option></select></div>
+            <div><label class="f">State</label><select id="fState"><option>All India</option><option>Maharashtra</option><option>Uttar Pradesh</option><option>Karnataka</option><option>Tamil Nadu</option><option>West Bengal</option></select></div>
+            <div><label class="f">Product line</label><select><option>All lines</option><option>Breast Care</option><option>Skinwise</option><option>Slimming Care</option><option>Intimate Care</option></select></div>
+            <div><label class="f">Received</label><select><option>Today</option><option>Last 3 days</option><option>Older than 24h</option></select></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap">
+            <button class="btn ghost sm" id="selAll">Select all in filter</button>
+            <button class="btn ghost sm" id="selNone">Clear selection</button>
+            <button class="btn ghost sm" id="selTop">Select first 25</button>
+            <span class="hint">Shift-click selects a range, exactly like the sheet.</span>
+          </div>
+        </div>
+        <div class="tw scroll"><table>
+          <thead><tr><th style="width:34px"><input type="checkbox" id="chkAll" style="width:auto"></th><th>Customer</th><th>Mobile</th><th>Source</th><th>Product interest</th><th>State</th><th class="r">Value</th><th>Received</th></tr></thead>
+          <tbody id="poolBody"></tbody>
+        </table></div>
+        <div class="card-b" style="border-top:1px solid var(--line2);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <label class="f" style="margin:0">Assign to</label>
+          <select id="assignTo" style="width:200px">
+            <option>— pick an employee —</option>
+            <option>Nikita</option><option>Divya</option><option>Riya Chauhan</option>
+            <option>Akruti</option><option>Priti</option><option>Priyanka</option><option>Kajal</option>
+          </select>
+          <button class="btn brass" id="doAssign">Assign selected</button>
+          <span class="hint" id="assignMsg"></span>
+        </div>
+      </div>
+
+      <div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-h"><h4>Suggested split</h4><span class="tag t-info tag">Advisory</span></div>
+          <div class="card-b">
+            <p style="font-size:12.3px;color:var(--muted);margin-bottom:10px">The system shows what a balanced distribution would look like based on current workload and last month's yield. You can accept it, edit it, or ignore it entirely.</p>
+            <div class="tw"><table>
+              <thead><tr><th>Rep</th><th class="r">Open now</th><th class="r">Suggested</th><th class="r">Yield 30d</th></tr></thead>
+              <tbody>
+                <tr><td>Nikita</td><td class="r mono">88</td><td class="r mono">82</td><td class="r mono" style="color:var(--vine)">18.4%</td></tr>
+                <tr><td>Divya</td><td class="r mono">94</td><td class="r mono">78</td><td class="r mono" style="color:var(--vine)">16.1%</td></tr>
+                <tr><td>Riya Chauhan</td><td class="r mono">71</td><td class="r mono">74</td><td class="r mono">12.9%</td></tr>
+                <tr><td>Akruti</td><td class="r mono">66</td><td class="r mono">70</td><td class="r mono">14.2%</td></tr>
+                <tr><td>Priti</td><td class="r mono">52</td><td class="r mono">64</td><td class="r mono">10.8%</td></tr>
+                <tr><td>Priyanka</td><td class="r mono">41</td><td class="r mono">60</td><td class="r mono">7.1%</td></tr>
+                <tr><td>Kajal</td><td class="r mono">120</td><td class="r mono">58</td><td class="r mono" style="color:var(--clay)">5.4%</td></tr>
+              </tbody>
+            </table></div>
+            <button class="btn ghost sm" style="margin-top:10px" id="applySplit">Apply suggested split</button>
+            <div class="legend" style="margin-top:8px">One click distributes the whole filtered pool in these proportions. Every lead still shows who assigned it and when.</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h4>Warnings before you assign</h4></div>
+          <div class="card-b" style="font-size:12.3px">
+            <div class="stat"><span><span class="dot d-bad"></span>Kajal already has 120 open</span><b>overloaded</b></div>
+            <div class="stat"><span><span class="dot d-warn"></span>18 leads belong to existing customers</span><b>owner exists</b></div>
+            <div class="stat"><span><span class="dot d-warn"></span>Megha is on leave</span><b>excluded</b></div>
+            <div class="stat"><span><span class="dot d-mute"></span>61 leads older than 24h</span><b>assign first</b></div>
+            <div class="note" style="margin-top:12px"><b>Existing customers are flagged, not forced.</b> If a lead already belongs to Riya, the system says so before you hand it to someone else. You can still override — it just gets logged.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h2 class="sec">Assignment &amp; transfer log <span>every move recorded, nothing silent</span></h2>
+    <div class="card"><div class="tw"><table>
+      <thead><tr><th>When</th><th>Leads</th><th>From</th><th>To</th><th>Action</th><th>Note</th><th>By</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">20 Aug 09:24</td><td class="mono">62</td><td>Pool</td><td>Nikita</td><td><span class="tag t-ok">Bulk assign</span></td><td>Shopify + delivered data, mixed states</td><td>Sunita</td></tr>
+        <tr><td class="mono">20 Aug 09:22</td><td class="mono">55</td><td>Pool</td><td>Riya Chauhan</td><td><span class="tag t-ok">Bulk assign</span></td><td>Breast Care interest, 18 existing customers of hers</td><td>Sunita</td></tr>
+        <tr><td class="mono">20 Aug 09:20</td><td class="mono">40</td><td>Pool</td><td>Priyanka</td><td><span class="tag t-ok">Bulk assign</span></td><td>Meta ads batch — training allocation</td><td>Sunita</td></tr>
+        <tr><td class="mono">19 Aug 16:40</td><td class="mono">31</td><td>Megha</td><td>Nikita</td><td><span class="tag t-warn">Bulk transfer</span></td><td>Rep on leave until 25 Aug</td><td>Sonam</td></tr>
+        <tr><td class="mono">19 Aug 11:22</td><td class="mono">9</td><td>Kajal</td><td>Pool</td><td><span class="tag t-mute">Recalled</span></td><td>Untouched 72h — returned for redistribution</td><td>System</td></tr>
+        <tr><td class="mono">18 Aug 10:05</td><td class="mono">1</td><td>Shweta</td><td>Riya Chauhan</td><td><span class="tag t-mute">Manual</span></td><td>Existing customer — ownership restored</td><td>Sunita</td></tr>
+      </tbody>
+    </table></div></div>
+  </div>
+
+  <!-- A4 employees -->
+  <div class="pane" id="p-a4">
+    <div class="note bad" style="margin-bottom:16px"><b>Roster drift, resolved.</b> The brief names 7 reps. The Achieve Report carries 11. The Scoreboard carries 10. This screen is the single roster — targets, allocation and incentive all read from it, so the three can never disagree again.</div>
+    <div class="card"><div class="tw"><table>
+      <thead><tr><th>Rep</th><th>Code</th><th>Status</th><th class="r">Monthly target</th><th class="r">Realised MTD</th><th style="width:130px">Progress</th><th class="r">RTO 90d</th><th class="r">EES</th><th class="r">WIP cap</th><th></th></tr></thead>
+      <tbody id="empBody"></tbody>
+    </table></div></div>
+
+    <div class="grid g3" style="margin-top:16px">
+      <div class="card"><div class="card-h"><h4>Access control</h4></div><div class="card-b" style="font-size:12.3px">
+        <div class="stat"><span>Export data</span><b style="color:var(--clay)">Blocked</b></div>
+        <div class="stat"><span>Print</span><b style="color:var(--clay)">Blocked</b></div>
+        <div class="stat"><span>Bulk list &gt; 50 rows</span><b style="color:var(--clay)">Blocked</b></div>
+        <div class="stat"><span>Full mobile visible</span><b style="color:var(--clay)">Masked</b></div>
+        <div class="stat"><span>Other reps' leads</span><b style="color:var(--clay)">Denied by RLS</b></div>
+        <div class="stat"><span>Reveal quota</span><b>8 per hour</b></div>
+      </div></div>
+      <div class="card"><div class="card-h"><h4>Sessions</h4></div><div class="card-b" style="font-size:12.3px">
+        <div class="stat"><span>Riya Chauhan</span><b class="mono">103.21.44.9 · active</b></div>
+        <div class="stat"><span>Nikita</span><b class="mono">103.21.44.9 · active</b></div>
+        <div class="stat"><span>Divya</span><b class="mono">49.36.2.181 · active</b></div>
+        <div class="stat"><span>Akruti</span><b class="mono">idle 14m</b></div>
+        <div class="stat"><span>Priti</span><b class="mono">idle 41m</b></div>
+        <div class="legend">One active session per rep. A second login ends the first.</div>
+      </div></div>
+      <div class="card"><div class="card-h"><h4>Offboarding</h4></div><div class="card-b" style="font-size:12.3px">
+        <p style="margin-bottom:9px">One click revokes access, rebalances open leads with a handover note, and preserves the full record of what the rep viewed in their last 30 days.</p>
+        <button class="btn ghost sm">Start offboarding</button>
+        <div class="legend" style="margin-top:9px">Nothing was ever on their machine, so nothing leaves with them.</div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- A5 customer 360 -->
+  <div class="pane" id="p-a5">
+    <div class="grid g12">
+      <div class="card">
+        <div class="card-h"><h4>Customer</h4></div>
+        <div class="card-b">
+          <div style="font-family:var(--cond);font-size:22px;font-weight:600">SK Muntaz</div>
+          <div class="mono" style="font-size:13px;color:var(--muted);margin:2px 0 12px">9848996231 · CUST-2211</div>
+          <div class="stat"><span>Type</span><b>Existing</b></div>
+          <div class="stat"><span>Buyer stage</span><b>THIRD</b></div>
+          <div class="stat"><span>Lifetime orders</span><b>3</b></div>
+          <div class="stat"><span>Lifetime value</span><b>₹7,400</b></div>
+          <div class="stat"><span>RTO history</span><b>0</b></div>
+          <div class="stat"><span>Owner</span><b>Riya Chauhan</b></div>
+          <div class="stat"><span>Ownership until</span><b>18 Sep 2026</b></div>
+          <div class="stat"><span>Next due</span><b style="color:var(--brass-d)">27 Aug 2026</b></div>
+          <div class="stat"><span>Location</span><b>Vijayawada, AP · 520008</b></div>
+          <div style="margin-top:12px"><span class="tag t-info">Breast Care</span> <span class="tag t-info">Skinwise</span></div>
+          <div class="legend">Product categories are derived from order lines, so a customer can sit in several at once.</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-h"><h4>Order history</h4><span class="tag t-mute tag">3 orders · 2 sources</span></div>
+          <div class="tw"><table>
+            <thead><tr><th>Date</th><th>Source</th><th>Products</th><th class="r">Value</th><th class="r">Base</th><th class="r">Credit</th><th>Status</th><th>Rep</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">01 Jun</td><td>Delivered data</td><td>Skinwise Special Serum 100ml · D-Tan Pack</td><td class="r mono">₹2,700</td><td class="r mono">₹0</td><td class="r mono">₹2,700</td><td><span class="tag t-ok">Delivered</span></td><td>Riya</td></tr>
+              <tr><td class="mono">29 Jun</td><td>Delivered data</td><td>Night Repair Serum</td><td class="r mono">₹2,500</td><td class="r mono">₹0</td><td class="r mono">₹2,500</td><td><span class="tag t-ok">Delivered</span></td><td>Riya</td></tr>
+              <tr><td class="mono">12 Aug</td><td>Shopify orders</td><td>Mamo Firm Cream 100gm · Mamo Firm Capsules</td><td class="r mono">₹2,200</td><td class="r mono">₹899</td><td class="r mono">₹1,301</td><td><span class="tag t-warn">In transit</span></td><td>Riya / Shopify</td></tr>
+            </tbody>
+          </table></div>
+          <div class="card-b" style="border-top:1px solid var(--line2)">
+            <div class="ribbon" style="height:14px"><span class="rb-base" style="width:12.2%"></span><span class="rb-credit" style="width:70.9%"></span><span class="rb-unreal" style="width:16.9%"></span></div>
+            <div class="rb-key"><span><i style="background:var(--brass)"></i>Company base ₹899</span><span><i style="background:var(--vine)"></i>Realised credit ₹5,200</span><span><i style="background:#C4CBD6"></i>Booked, not yet realised ₹1,301</span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h4>Activity</h4><span class="tag t-mute tag">Fq 7</span></div>
+          <div class="card-b">
+            <div class="timeline">
+              <div class="tl-i"><div class="tl-t">18 Aug 11:04 · Riya</div><div class="tl-x"><span class="tag t-ok">Order done</span> &nbsp;“cream ke saath capsule bhi le liya, 2200 ka order confirm”</div></div>
+              <div class="tl-i"><div class="tl-t">14 Aug 16:22 · Riya</div><div class="tl-x"><span class="tag t-warn">Follow up</span> &nbsp;“abhi stock hai, 3-4 din baad call karna”</div></div>
+              <div class="tl-i"><div class="tl-t">10 Aug 10:11 · Riya</div><div class="tl-x"><span class="tag t-mute">Ringing</span> &nbsp;“ringing // ringing”</div></div>
+              <div class="tl-i"><div class="tl-t">29 Jun 12:40 · System</div><div class="tl-x">Repeat-purchase due generated from delivery on 05 Jun + 24 usage days</div></div>
+            </div>
+            <div class="fixnote"><span class="fx">FIX</span><div>Remarks stay in Hinglish exactly as typed. A normalised English version and intent tags are generated overnight so four months of remarks become searchable — “price objection”, “has stock”, “husband decides”.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- A6 orders -->
+  <div class="pane" id="p-a6">
+    <div class="grid g5" style="margin-bottom:18px">
+      <div class="kpi"><div class="kpi-l">Pending</div><div class="kpi-v">24</div><div class="kpi-d">₹58,400</div></div>
+      <div class="kpi i"><div class="kpi-l">In transit</div><div class="kpi-v">67</div><div class="kpi-d">₹1,64,900</div></div>
+      <div class="kpi v"><div class="kpi-l">Delivered MTD</div><div class="kpi-v">43</div><div class="kpi-d">₹1,19,720</div></div>
+      <div class="kpi c"><div class="kpi-l">RTO MTD</div><div class="kpi-v">5</div><div class="kpi-d">4.0% of dispatched</div></div>
+      <div class="kpi c"><div class="kpi-l">NDR / refused</div><div class="kpi-v">11</div><div class="kpi-d">recovery leads created</div></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-h"><h4>Pre-dispatch risk queue</h4><span class="tag t-bad tag">4 high risk</span></div>
+      <div class="tw"><table>
+        <thead><tr><th>Order</th><th>Customer</th><th>State</th><th class="r">Value</th><th>Payment</th><th class="r">RTO risk</th><th>Why</th><th></th></tr></thead>
+        <tbody>
+          <tr><td class="mono">ORD-9941</td><td>Preeta</td><td>Telangana</td><td class="r mono">₹1,500</td><td><span class="tag t-bad">Full COD</span></td><td class="r mono" style="color:var(--clay)">0.71</td><td>2 prior RTOs · full COD · high-RTO pincode</td><td class="r"><button class="btn brass sm">Ask for ₹300 prepaid</button></td></tr>
+          <tr><td class="mono">ORD-9948</td><td>Chaitan Kujur</td><td>Malda</td><td class="r mono">₹1,001</td><td><span class="tag t-bad">Full COD</span></td><td class="r mono" style="color:var(--clay)">0.64</td><td>1 prior RTO · no connect before dispatch</td><td class="r"><button class="btn brass sm">Ask for prepaid</button></td></tr>
+          <tr><td class="mono">ORD-9952</td><td>Nisha Topno</td><td>Delhi</td><td class="r mono">₹550</td><td><span class="tag t-bad">Full COD</span></td><td class="r mono" style="color:var(--clay)">0.58</td><td>Low value · first order · COD</td><td class="r"><button class="btn ghost sm">Confirm call</button></td></tr>
+          <tr><td class="mono">ORD-9955</td><td>Gour Prasad Sharma</td><td>Odisha</td><td class="r mono">₹1,450</td><td><span class="tag t-warn">Partial ₹300</span></td><td class="r mono" style="color:var(--brass-d)">0.39</td><td>Partial prepaid reduces risk materially</td><td class="r"><button class="btn ghost sm">Dispatch</button></td></tr>
+        </tbody>
+      </table></div>
+      <div class="card-b" style="border-top:1px solid var(--line2)">
+        <div class="fixnote"><span class="fx">NEW</span><div>None of this is possible today because the prepaid share is buried in free text — <span class="mono">"300 prepaid &amp; 2200 cod"</span> across 121 different spellings. Once parsed into two numbers, prepaid ratio becomes the strongest single predictor available and the risk queue becomes actionable before the parcel ships.</div></div>
+      </div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card"><div class="card-h"><h4>RTO by payment mode</h4><span class="tag t-mute tag">rolling 90 days</span></div><div class="card-b">
+        <div class="hbar-row"><span>Full COD</span><div class="hbar"><i style="width:100%;background:var(--clay)"></i></div><b class="mono r">11.4%</b></div>
+        <div class="hbar-row"><span>Partial prepaid</span><div class="hbar"><i style="width:34%;background:var(--brass)"></i></div><b class="mono r">3.9%</b></div>
+        <div class="hbar-row"><span>Full prepaid</span><div class="hbar"><i style="width:6%;background:var(--vine)"></i></div><b class="mono r">0.7%</b></div>
+        <div class="legend">The commercial lever is obvious once the number exists. Converting COD to even ₹300 partial prepaid cuts RTO by roughly two-thirds.</div>
+      </div></div>
+      <div class="card"><div class="card-h"><h4>RTO by rep</h4><span class="tag t-mute tag">feeds the delivery-quality score</span></div><div class="card-b">
+        <div class="hbar-row"><span>Kajal</span><div class="hbar"><i style="width:100%;background:var(--clay)"></i></div><b class="mono r">41%</b></div>
+        <div class="hbar-row"><span>Riya Chauhan</span><div class="hbar"><i style="width:20%;background:var(--brass)"></i></div><b class="mono r">8%</b></div>
+        <div class="hbar-row"><span>Divya</span><div class="hbar"><i style="width:10%;background:var(--vine)"></i></div><b class="mono r">4%</b></div>
+        <div class="hbar-row"><span>Nikita</span><div class="hbar"><i style="width:7%;background:var(--vine)"></i></div><b class="mono r">3%</b></div>
+        <div class="hbar-row"><span>Akruti</span><div class="hbar"><i style="width:5%;background:var(--vine)"></i></div><b class="mono r">2%</b></div>
+        <div class="legend">Kajal books ₹10,323 at 41% RTO. Under realised-basis scoring that lands very differently from the current sheet, which treats a booked order and a delivered one as the same thing.</div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- A7 masters -->
+  <div class="pane" id="p-a7">
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-h"><h4>SKU master</h4><span class="tag t-warn tag">Shopify base price drives credit</span></div>
+        <div class="tw scroll"><table>
+          <thead><tr><th>SKU</th><th>Product</th><th>Line</th><th class="r">MRP</th><th class="r">Shopify base</th><th class="r">Usage days</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">BC-014</td><td>Mamo Firm Cream 100gm</td><td>Breast Care</td><td class="r mono">1,450</td><td class="r mono">899</td><td class="r mono">30</td></tr>
+            <tr><td class="mono">BC-021</td><td>Mamo Plus 2-in-1 100gm</td><td>Breast Care</td><td class="r mono">1,500</td><td class="r mono">949</td><td class="r mono">30</td></tr>
+            <tr><td class="mono">BC-030</td><td>Mamo Plus Capsules 60cap</td><td>Breast Care</td><td class="r mono">1,600</td><td class="r mono">899</td><td class="r mono">30</td></tr>
+            <tr><td class="mono">BC-044</td><td>B Reduce Cream 100gm</td><td>Breast Care</td><td class="r mono">1,450</td><td class="r mono">849</td><td class="r mono">30</td></tr>
+            <tr><td class="mono">SW-007</td><td>Skinwise Pigmentation Cream 10ml</td><td>Skinwise</td><td class="r mono">1,200</td><td class="r mono">849</td><td class="r mono">45</td></tr>
+            <tr><td class="mono">SW-012</td><td>Special Pigmentation Serum 50ml</td><td>Skinwise</td><td class="r mono">2,000</td><td class="r mono">—</td><td class="r mono">60</td></tr>
+            <tr><td class="mono">SL-003</td><td>Geluslim Gel 100gm</td><td>Slimming Care</td><td class="r mono">1,300</td><td class="r mono">899</td><td class="r mono">30</td></tr>
+            <tr><td class="mono">SL-009</td><td>Lypo S Capsules 30cap</td><td>Slimming Care</td><td class="r mono">1,000</td><td class="r mono">—</td><td class="r mono">30</td></tr>
+            <tr><td class="mono">IC-005</td><td>Vg Tone Gel 200gm</td><td>Intimate Care</td><td class="r mono">1,349</td><td class="r mono">799</td><td class="r mono">40</td></tr>
+            <tr><td class="mono">HC-002</td><td>Keshghane Oil 100ml</td><td>Hair Care</td><td class="r mono">999</td><td class="r mono">—</td><td class="r mono">45</td></tr>
+          </tbody>
+        </table></div>
+        <div class="card-b" style="border-top:1px solid var(--line2)">
+          <div class="fixnote"><span class="fx">FIX</span><div>The ₹899 / ₹849 / ₹949 clusters were reverse-engineered from your own order sheets. Once they sit here, upsell credit is computed automatically instead of being remembered by whoever fills the row — which is why 16 of 52 Shopify rows currently credit the full order value by mistake.</div></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-h"><h4>Disposition master</h4><span class="tag t-ok tag">15 codes · closed list</span></div>
+          <div class="card-b" style="font-size:12.3px">
+            <div class="stat"><span><span class="dot d-ok"></span>ORDER_DONE</span><b class="mono">terminal · positive</b></div>
+            <div class="stat"><span><span class="dot d-warn"></span>FOLLOW_UP</span><b class="mono">date required</b></div>
+            <div class="stat"><span><span class="dot d-mute"></span>RINGING</span><b class="mono">aliases: rinigng, ring, ring cut</b></div>
+            <div class="stat"><span><span class="dot d-mute"></span>BUSY</span><b class="mono">aliases: bsy call cut, bsy cal cut</b></div>
+            <div class="stat"><span><span class="dot d-mute"></span>NOT_CONNECTED</span><b class="mono">aliases: not connect</b></div>
+            <div class="stat"><span><span class="dot d-warn"></span>HAS_PRODUCT</span><b class="mono">schedules repeat call</b></div>
+            <div class="stat"><span><span class="dot d-bad"></span>NOT_INTERESTED</span><b class="mono">terminal</b></div>
+            <div class="stat"><span><span class="dot d-bad"></span>UNDER_AGE</span><b class="mono">terminal · compliance</b></div>
+            <div class="fixnote"><span class="fx">FIX</span><div>One tab currently carries 49 spellings of about twelve real outcomes. A closed dropdown plus an alias table ends that permanently, and every historical variant still maps correctly on import.</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h4>Source master</h4></div>
+          <div class="tw"><table>
+            <thead><tr><th>Source</th><th class="r">Valid days</th><th class="r">Exp. conv.</th><th>Attribution</th></tr></thead>
+            <tbody>
+              <tr><td>Shopify orders</td><td class="r mono">3</td><td class="r mono">45%</td><td><span class="tag t-warn">Upsell delta</span></td></tr>
+              <tr><td>Meta ads leads</td><td class="r mono">7</td><td class="r mono">6%</td><td><span class="tag t-ok">Full credit</span></td></tr>
+              <tr><td>Website WhatsApp</td><td class="r mono">5</td><td class="r mono">12%</td><td><span class="tag t-ok">Full credit</span></td></tr>
+              <tr><td>Add to cart</td><td class="r mono">2</td><td class="r mono">20%</td><td><span class="tag t-ok">Full credit</span></td></tr>
+              <tr><td>Website call</td><td class="r mono">1</td><td class="r mono">28%</td><td><span class="tag t-ok">Full credit</span></td></tr>
+              <tr><td>WA campaign</td><td class="r mono">7</td><td class="r mono">15%</td><td><span class="tag t-warn">Upsell delta</span></td></tr>
+              <tr><td>Delivered / repeat</td><td class="r mono">30</td><td class="r mono">15%</td><td><span class="tag t-ok">Full credit</span></td></tr>
+              <tr><td>RTO recovery</td><td class="r mono">15</td><td class="r mono">9%</td><td><span class="tag t-ok">Full credit</span></td></tr>
+              <tr><td>NC / refused</td><td class="r mono">3</td><td class="r mono">7%</td><td><span class="tag t-ok">Full credit</span></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- A8 audit -->
+  <div class="pane" id="p-a8">
+    <div class="note bad" style="margin-bottom:16px"><b>Be clear-eyed about this.</b> If reps dial from their own handset, they must see the full number — so the strongest control available (never showing it) is off the table. What is left is not prevention, it is <b>detection and attribution</b>: make bulk copying slow, make it obvious within minutes, and make it traceable to one person. That is still a very large improvement on today, where every rep holds a downloadable spreadsheet of four months of customer data on their own laptop.</div>
+
+    <div class="grid g4" style="margin-bottom:18px">
+      <div class="kpi v"><div class="kpi-l">Leads viewed today</div><div class="kpi-v">412</div><div class="kpi-d">every open is logged</div></div>
+      <div class="kpi"><div class="kpi-l">Numbers copied</div><div class="kpi-v">31</div><div class="kpi-d">copy button is logged too</div></div>
+      <div class="kpi c"><div class="kpi-l">Velocity alerts</div><div class="kpi-v">1</div><div class="kpi-d">Kajal · auto-locked 11:31</div></div>
+      <div class="kpi i"><div class="kpi-l">Export attempts</div><div class="kpi-v">0</div><div class="kpi-d">no export exists for reps</div></div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-h"><h4>Access log</h4><span class="tag t-bad tag">1 pattern flagged</span></div>
+        <div class="tw"><table>
+          <thead><tr><th>Time</th><th>Rep</th><th>Action</th><th>Lead</th><th>IP</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">14:22</td><td>Riya Chauhan</td><td>Opened lead</td><td class="mono">L-88412</td><td class="mono">103.21.44.9</td></tr>
+            <tr><td class="mono">14:21</td><td>Riya Chauhan</td><td>Copied number</td><td class="mono">L-88412</td><td class="mono">103.21.44.9</td></tr>
+            <tr><td class="mono">13:48</td><td>Nikita</td><td>Opened lead</td><td class="mono">L-88104</td><td class="mono">103.21.44.9</td></tr>
+            <tr style="background:#FDF3F1"><td class="mono">11:31</td><td>Kajal</td><td>Copied number</td><td class="mono">L-87990</td><td class="mono">49.205.11.7</td></tr>
+            <tr style="background:#FDF3F1"><td class="mono">11:31</td><td>Kajal</td><td>Copied number</td><td class="mono">L-87989</td><td class="mono">49.205.11.7</td></tr>
+            <tr style="background:#FDF3F1"><td class="mono">11:30</td><td>Kajal</td><td>Copied number</td><td class="mono">L-87988</td><td class="mono">49.205.11.7</td></tr>
+            <tr style="background:#FDF3F1"><td class="mono">11:30</td><td>Kajal</td><td>Copied number</td><td class="mono">L-87987</td><td class="mono">49.205.11.7</td></tr>
+          </tbody>
+        </table></div>
+        <div class="card-b" style="border-top:1px solid var(--line2)">
+          <div class="note bad"><b>Four numbers copied in ninety seconds from an unrecognised IP.</b> A human working leads copies one number, then talks for four minutes. Copying at machine pace is a different behaviour entirely, and the system locks the account and alerts admins on the fourth event — not at the end of the month when 900 numbers are already gone.</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-h"><h4>What a rep can and cannot do</h4></div>
+          <div class="card-b" style="font-size:12.3px">
+            <div class="stat"><span>See own assigned leads</span><b style="color:var(--vine)">Yes</b></div>
+            <div class="stat"><span>See full mobile number</span><b style="color:var(--vine)">Yes — needed to dial</b></div>
+            <div class="stat"><span>See other reps' leads</span><b style="color:var(--clay)">Blocked in the database</b></div>
+            <div class="stat"><span>Search the whole customer base</span><b style="color:var(--clay)">Blocked</b></div>
+            <div class="stat"><span>Export / download</span><b style="color:var(--clay)">No such button exists</b></div>
+            <div class="stat"><span>Print</span><b style="color:var(--clay)">Blocked</b></div>
+            <div class="stat"><span>View more than 50 rows at once</span><b style="color:var(--clay)">Blocked</b></div>
+            <div class="stat"><span>Select-all + copy a table</span><b style="color:var(--clay)">Blocked</b></div>
+            <div class="stat"><span>Log in outside shift hours</span><b style="color:var(--clay)">Blocked</b></div>
+            <div class="stat"><span>Log in on a second device</span><b style="color:var(--clay)">Ends the first session</b></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h4>Watermark on every screen</h4></div>
+          <div class="card-b watermark">
+            <table>
+              <thead><tr><th>Customer</th><th>Mobile</th><th>City</th><th>Last order</th></tr></thead>
+              <tbody>
+                <tr><td>SK Muntaz</td><td class="mono">9848996231</td><td>Vijayawada</td><td class="mono">12 Aug</td></tr>
+                <tr><td>Hasina Ali</td><td class="mono">9151731323</td><td>Kunwarpur</td><td class="mono">03 Aug</td></tr>
+                <tr><td>Mohini</td><td class="mono">8218936003</td><td>Agra</td><td class="mono">01 Aug</td></tr>
+              </tbody>
+            </table>
+            <div class="legend">Name, employee code, timestamp and IP sit behind every data view. A photographed screen leads back to one person, which changes the calculation before anyone tries.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h2 class="sec">If you later want the strongest control <span>optional, Phase 6</span></h2>
+    <div class="grid g3">
+      <div class="card"><div class="card-h"><h4>Click-to-call with masking</h4></div><div class="card-b" style="font-size:12.3px">A cloud dialler (Exotel, Servetel) connects both legs. The rep taps Call and never sees the number at all. Costs roughly ₹0.60–0.90 per minute plus a monthly rental, and calls get recorded automatically — which also gives you call-quality audit. This is the only control that actually removes the risk.</div></div>
+      <div class="card"><div class="card-h"><h4>Partial masking</h4></div><div class="card-b" style="font-size:12.3px">Show <span class="mono">98••••6231</span> by default with a one-tap reveal that is logged and rate-limited. Reps can still dial from their handset but cannot skim a page of numbers at a glance. A middle path if a dialler is too much right now.</div></div>
+      <div class="card"><div class="card-h"><h4>Desktop shell</h4></div><div class="card-b" style="font-size:12.3px">A Windows app that blocks screen capture at the OS level. Real protection against screenshots, but only on company machines and only on Windows. Worth it if reps work from an office floor, pointless if they work from home on their own laptops.</div></div>
+    </div>
+
+    <h2 class="sec">Audit trail <span>append-only</span></h2>
+    <div class="card"><div class="tw"><table>
+      <thead><tr><th>When</th><th>Who</th><th>What</th><th>Detail</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">20 Aug 09:24</td><td>Sunita</td><td>Bulk assign</td><td>62 leads → Nikita</td></tr>
+        <tr><td class="mono">20 Aug 09:12</td><td>System</td><td>Customer merged</td><td>CUST-2211 ← duplicate from delivered_20aug.xlsx</td></tr>
+        <tr><td class="mono">19 Aug 16:40</td><td>Sonam</td><td>Bulk transfer</td><td>31 leads Megha → Nikita · rep on leave</td></tr>
+        <tr><td class="mono">19 Aug 14:02</td><td>Sunita</td><td>Ledger adjustment</td><td>ORD-9812 · credit corrected · reason logged</td></tr>
+        <tr><td class="mono">18 Aug 11:15</td><td>Sonia</td><td>Batch rolled back</td><td>B-18826-04 · wrong file uploaded to Shopify channel</td></tr>
+        <tr><td class="mono">15 Aug 10:30</td><td>Owner</td><td>Target changed</td><td>Kajal ₹1,20,000 → ₹1,00,000 · effective 1 Sep</td></tr>
+      </tbody>
+    </table></div></div>
+  </div>
+</section>
+
+<!-- ═══════════════ 04 EMPLOYEE ═══════════════ -->
+<section class="view" id="v-emp">
+  <div class="eyebrow">04 — Employee portal</div>
+  <h1 class="vt">BDE workspace</h1>
+  <p class="vsub">Riya sees her own assigned leads and nothing else — enforced in the database, not by a hidden menu item. She dials from her own handset and updates the outcome here, exactly like the sheet, except the update writes to one shared record instead of her private copy.</p>
+
+  <div class="tabs" data-tabs="emp">
+    <button class="on" data-p="e1">My day</button>
+    <button data-p="e2">Worklist</button>
+    <button data-p="e3">Lead detail</button>
+    <button data-p="e4">Order entry</button>
+    <button data-p="e5">My performance</button>
+  </div>
+
+  <!-- E1 -->
+  <div class="pane on" id="p-e1">
+    <div class="grid g4" style="margin-bottom:18px">
+      <div class="kpi"><div class="kpi-l">Monthly target</div><div class="kpi-v">₹3,00,000</div><div class="kpi-d">12 working days left</div></div>
+      <div class="kpi v"><div class="kpi-l">Realised</div><div class="kpi-v">₹1,19,720</div><div class="kpi-d">39.9% achieved</div></div>
+      <div class="kpi"><div class="kpi-l">Required per day</div><div class="kpi-v">₹16,336</div><div class="kpi-d">booking, at your 8% RTO</div></div>
+      <div class="kpi c"><div class="kpi-l">Your RTO</div><div class="kpi-v">8.0%</div><div class="kpi-d">team 4.0% · costs you ₹1,313/day</div></div>
+    </div>
+
+    <div class="grid g21">
+      <div class="card">
+        <div class="card-h"><h4>Today's plan</h4><span class="tag t-warn tag">Generated 07:30</span></div>
+        <div class="card-b">
+          <div class="wl-grp" style="margin:0">
+            <div class="wl-h"><span class="dot d-bad"></span>Overdue follow-ups<span class="n">4 · clear these first</span></div>
+            <div class="wl-i"><div><div class="wl-n">Balin Konch</div><div class="wl-m">Promised callback 18 Aug · Mamo Plus 2-in-1 · ₹2,500 expected</div></div><span class="tag t-bad">2 days late</span></div>
+            <div class="wl-i"><div><div class="wl-n">Sujata Nayak</div><div class="wl-m">“meri mother express karengi” · warm</div></div><span class="tag t-bad">1 day late</span></div>
+          </div>
+          <div class="wl-grp">
+            <div class="wl-h"><span class="dot d-warn"></span>Repeat-purchase due<span class="n">6 · highest conversion</span></div>
+            <div class="wl-i"><div><div class="wl-n">SK Muntaz</div><div class="wl-m">Delivered 05 Jun · Skinwise Special Serum · due 27 Aug · LTV ₹7,400</div></div><span class="tag t-ok">Buyer Fq 3</span></div>
+            <div class="wl-i"><div><div class="wl-n">Bhagyashree Dalvi</div><div class="wl-m">Delivered 05 Jul · Detox Drink 200ml · due 21 Aug</div></div><span class="tag t-ok">Buyer Fq 2</span></div>
+          </div>
+          <div class="wl-grp" style="margin-bottom:0">
+            <div class="wl-h"><span class="dot d-mute"></span>Fresh leads assigned by Sunita, 09:24<span class="n">18</span></div>
+            <div class="wl-i"><div><div class="wl-n">Priyanshi Sharma</div><div class="wl-m">Shopify order ₹3,000 · Mamo Firm Cream + Capsules · upsell window open</div></div><span class="tag t-warn">High value</span></div>
+            <div class="wl-i"><div><div class="wl-n">Himanshi Bisht</div><div class="wl-m">Meta ad · Skinwise · image received</div></div><span class="tag t-mute">Meta lead</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-h"><h4>Where you stand</h4></div>
+          <div class="card-b">
+            <div style="font-family:var(--cond);font-size:15px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:9px">Rank 3 of 7</div>
+            <div class="stat"><span>Booked this month</span><b>₹1,74,357</b></div>
+            <div class="stat"><span>Realised (counts)</span><b style="color:var(--vine)">₹1,19,720</b></div>
+            <div class="stat"><span>In transit (pending)</span><b>₹54,637</b></div>
+            <div class="stat"><span>Clawed back</span><b style="color:var(--clay)">−₹9,560</b></div>
+            <div style="margin-top:12px">
+              <div class="ribbon" style="height:14px"><span class="rb-credit" style="width:64%"></span><span class="rb-unreal" style="width:31%"></span><span class="rb-claw" style="width:5%"></span></div>
+              <div class="rb-key"><span><i style="background:var(--vine)"></i>Realised</span><span><i style="background:#C4CBD6"></i>Awaiting delivery</span><span><i style="background:var(--clay)"></i>Clawback</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="note"><b>Incentive projection ₹4,850.</b> Based on realised credit only. Your ₹54,637 in transit will move into this figure as parcels deliver — and out of it if they RTO.</div>
+        <div class="card" style="margin-top:14px">
+          <div class="card-h"><h4>Discipline</h4></div>
+          <div class="card-b" style="font-size:12.3px">
+            <div class="stat"><span>Follow-up SLA</span><b style="color:var(--vine)">91%</b></div>
+            <div class="stat"><span>Dials today</span><b>30 of 60</b></div>
+            <div class="stat"><span>Connectivity</span><b>33%</b></div>
+            <div class="stat"><span>Untouched over 48h</span><b style="color:var(--clay)">3 leads</b></div>
+            <div class="legend">Untouched leads return to the pool at 72 hours and reduce your discipline score.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- E2 -->
+  <div class="pane" id="p-e2">
+    <div class="grid g12">
+      <div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-h"><h4>Filters</h4></div>
+          <div class="card-b">
+            <div class="field"><label class="f">Queue</label><select><option>Everything due (43)</option><option>Overdue only (4)</option><option>Repeat due (6)</option><option>Fresh today (18)</option><option>Ageing, expiring soon (7)</option></select></div>
+            <div class="field"><label class="f">Source</label><select><option>All sources</option><option>Shopify orders</option><option>Delivered / repeat</option><option>Meta ads</option><option>WA campaign</option></select></div>
+            <div class="field"><label class="f">Temperature</label><select><option>All</option><option>Hot</option><option>Warm</option><option>Cold</option></select></div>
+            <div class="field"><label class="f">Product line</label><select><option>All lines</option><option>Breast Care</option><option>Skinwise</option><option>Slimming Care</option><option>Intimate Care</option></select></div>
+          </div>
+        </div>
+        <div class="note"><b>No free search across all customers.</b> A rep can only reach leads assigned to them. Typing a stranger's number returns nothing — the database refuses the row, not the interface.</div>
+      </div>
+
+      <div class="card watermark">
+        <div class="card-h"><h4>My worklist</h4><span class="tag t-mute tag">43 open · 50 rows max per page</span></div>
+        <div class="tw"><table>
+          <thead><tr><th style="width:26px"></th><th>Customer</th><th>Mobile</th><th>Source</th><th>Last outcome</th><th>Due</th><th class="r">Expected</th><th></th></tr></thead>
+          <tbody>
+            <tr><td><span class="dot d-bad"></span></td><td><b>Balin Konch</b></td><td class="mono">9957775262</td><td>Meta ads</td><td><span class="tag t-warn">Call back</span></td><td class="mono" style="color:var(--clay)">18 Aug</td><td class="r mono">₹2,500</td><td class="r"><button class="btn brass sm">Call</button></td></tr>
+            <tr><td><span class="dot d-bad"></span></td><td><b>Sujata Nayak</b></td><td class="mono">8917619174</td><td>Meta ads</td><td><span class="tag t-warn">Follow up</span></td><td class="mono" style="color:var(--clay)">19 Aug</td><td class="r mono">₹1,500</td><td class="r"><button class="btn brass sm">Call</button></td></tr>
+            <tr><td><span class="dot d-warn"></span></td><td><b>SK Muntaz</b></td><td class="mono">9848996231</td><td>Repeat due</td><td><span class="tag t-ok">Order done</span></td><td class="mono">20 Aug</td><td class="r mono">₹2,700</td><td class="r"><button class="btn brass sm">Call</button></td></tr>
+            <tr><td><span class="dot d-warn"></span></td><td><b>Priyanshi Sharma</b></td><td class="mono">8076845536</td><td>Shopify</td><td><span class="tag t-mute">New</span></td><td class="mono">20 Aug</td><td class="r mono">₹3,000</td><td class="r"><button class="btn brass sm">Call</button></td></tr>
+            <tr><td><span class="dot d-warn"></span></td><td><b>Bhagyashree Dalvi</b></td><td class="mono">8698139813</td><td>Repeat due</td><td><span class="tag t-ok">Order done</span></td><td class="mono">21 Aug</td><td class="r mono">₹2,500</td><td class="r"><button class="btn ghost sm">Call</button></td></tr>
+            <tr><td><span class="dot d-mute"></span></td><td><b>Himanshi Bisht</b></td><td class="mono">8449645312</td><td>Meta ads</td><td><span class="tag t-mute">Ringing</span></td><td class="mono">20 Aug</td><td class="r mono">₹1,200</td><td class="r"><button class="btn ghost sm">Call</button></td></tr>
+            <tr><td><span class="dot d-mute"></span></td><td><b>Mo Saif</b></td><td class="mono">8173996166</td><td>WA campaign</td><td><span class="tag t-warn">Follow up</span></td><td class="mono">21 Aug</td><td class="r mono">₹1,800</td><td class="r"><button class="btn ghost sm">Call</button></td></tr>
+            <tr><td><span class="dot d-mute"></span></td><td><b>Aarti</b></td><td class="mono">9027835461</td><td>Meta ads</td><td><span class="tag t-mute">Call cut</span></td><td class="mono">22 Aug</td><td class="r mono">₹899</td><td class="r"><button class="btn ghost sm">Call</button></td></tr>
+          </tbody>
+        </table></div>
+        <div class="card-b" style="border-top:1px solid var(--line2)">
+          <div class="fixnote"><span class="fx">FIX</span><div>Numbers are fully visible because reps dial from their own handset — masking them would make the job impossible. What replaces masking: they only ever see leads assigned to them, the page is capped at 50 rows, there is no export button and no bulk copy, every screen carries their name as a watermark, and every page they open is logged.</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- E3 -->
+  <div class="pane" id="p-e3">
+    <div class="grid g12">
+      <div class="card">
+        <div class="card-h"><h4>Lead</h4><span class="tag t-warn tag">High value</span></div>
+        <div class="card-b">
+          <div style="font-family:var(--cond);font-size:22px;font-weight:600">Priyanshi Sharma</div>
+          <div class="phone" style="margin:6px 0 4px">
+            <span id="phoneVal">8076845536</span>
+            <button class="btn ghost sm" id="copyBtn">Copy</button>
+            <button class="btn brass sm" id="callBtn">Mark dialled</button>
+          </div>
+          <div class="legend" style="margin-bottom:12px">Alt: <span class="mono">9891525685</span> · dial from your handset, then log the outcome here.</div>
+          <div id="revealBox" style="display:none"></div>
+<div class="stat"><span>Source</span><b>Shopify orders</b></div>
+          <div class="stat"><span>Order value at import</span><b>₹3,000</b></div>
+          <div class="stat"><span>Company base</span><b>₹899</b></div>
+          <div class="stat"><span>Assigned by</span><b>Sunita · 20 Aug 09:24</b></div>
+          <div class="stat"><span>Valid till</span><b>23 Aug</b></div>
+          <div class="stat"><span>Attempts (Fq)</span><b>0</b></div>
+          <div class="stat"><span>Location</span><b>Ghaziabad, UP · 201013</b></div>
+          <div class="stat"><span>Customer type</span><b>New</b></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-h"><h4>What the system knows</h4><span class="tag t-info tag">Suggestion</span></div>
+          <div class="card-b">
+            <div class="note"><b>Upsell window is open.</b> She has ordered Mamo Firm Cream 100gm at the ₹899 Shopify price. Customers on this SKU take the 60-capsule pack 38% of the time when offered as a bundle. Suggested pitch: 2-pack + capsules at ₹3,000 — which is what her cart already totals, so confirm rather than sell.</div>
+            <div class="fixnote"><span class="fx">NEW</span><div>Built from the co-purchase matrix across your own delivered orders. It is a suggestion on screen, never an automatic action — no model touches an order or a number.</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h4>Log the call</h4></div>
+          <div class="card-b">
+            <div class="grid g2">
+              <div class="field"><label class="f">Outcome (required)</label>
+                <select id="dispo">
+                  <option>— select —</option>
+                  <option>Order done</option><option>Follow up</option><option>Call back</option>
+                  <option>Ringing</option><option>Busy</option><option>Not connected</option>
+                  <option>Has product</option><option>Not interested</option><option>Refused</option>
+                  <option>Wrong number</option><option>Under age</option><option>Language issue</option>
+                </select>
+              </div>
+              <div class="field"><label class="f">Next follow-up</label><input type="date" value="2026-08-23"></div>
+            </div>
+            <div class="field"><label class="f">Remark — type in Hinglish, it stays as you write it</label>
+              <input value="capsule bhi chahiye bola, sham tak confirm karegi"></div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="btn" id="saveDispo">Save and go to next lead</button>
+              <button class="btn ghost">Create order</button>
+              <span class="hint" id="dispoMsg"></span>
+            </div>
+            <div class="fixnote"><span class="fx">FIX</span><div>Saving is blocked without an outcome, and Follow-up cannot be saved without a date. That single rule is what permanently ends 49 spellings of twelve outcomes.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- E4 -->
+  <div class="pane" id="p-e4">
+    <div class="grid g21">
+      <div class="card">
+        <div class="card-h"><h4>New order · Priyanshi Sharma</h4><span class="tag t-warn tag">Shopify · upsell delta</span></div>
+        <div class="card-b">
+          <div class="grid g3">
+            <div class="field"><label class="f">Product 1</label><select id="p1"><option value="1450">Mamo Firm Cream 100gm — ₹1,450</option><option value="1500">Mamo Plus 2-in-1 100gm — ₹1,500</option><option value="1200">Skinwise Pigmentation Cream — ₹1,200</option></select></div>
+            <div class="field"><label class="f">Qty</label><select id="q1"><option>1</option><option>2</option><option>3</option></select></div>
+            <div class="field"><label class="f">Pack</label><select><option>(1 Pack)</option><option>(2 Pack)</option></select></div>
+          </div>
+          <div class="grid g3">
+            <div class="field"><label class="f">Product 2</label><select id="p2"><option value="0">— none —</option><option value="1600" selected>Mamo Firm Capsules 60cap — ₹1,600</option><option value="999">Keshghane Oil 100ml — ₹999</option></select></div>
+            <div class="field"><label class="f">Qty</label><select id="q2"><option>1</option><option>2</option></select></div>
+            <div class="field"><label class="f">Pack</label><select><option>(1 Pack)</option><option>(2 Pack)</option></select></div>
+          </div>
+          <div class="grid g3">
+            <div class="field"><label class="f">Order value</label><input id="ordVal" value="3000"></div>
+            <div class="field"><label class="f">Prepaid amount</label><input id="prepaid" value="300"></div>
+            <div class="field"><label class="f">COD amount</label><input id="cod" value="2700" readonly></div>
+          </div>
+          <div class="fixnote"><span class="fx">FIX</span><div>Prepaid and COD are two numbers, captured separately. Today this is one free-text field with 121 different spellings, which is why prepaid ratio — the strongest RTO lever you have — cannot be measured at all.</div></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-h"><h4>Your credit, live</h4></div>
+          <div class="card-b">
+            <div class="stat"><span>Order value</span><b class="mono" id="oV">₹3,000</b></div>
+            <div class="stat"><span>Company base (Shopify)</span><b class="mono" id="oB">₹899</b></div>
+            <div class="stat"><span><b>Your credit</b></span><b class="mono" id="oC" style="color:var(--vine);font-size:15px">₹2,101</b></div>
+            <div style="margin:14px 0 4px">
+              <div class="ribbon" style="height:16px"><span class="rb-base" id="rbB" style="width:30%"></span><span class="rb-unreal" id="rbU" style="width:70%"></span></div>
+              <div class="rb-key"><span><i style="background:var(--brass)"></i>Company base</span><span><i style="background:#C4CBD6"></i>Your credit — realises on delivery</span></div>
+            </div>
+            <div class="note" style="margin-top:12px">Credit turns green in your score the day this parcel is marked delivered. If it comes back RTO, the ledger reverses it automatically.</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h4>Risk on this order</h4></div>
+          <div class="card-b">
+            <div class="stat"><span>Predicted RTO risk</span><b class="mono" style="color:var(--brass-d)">0.34</b></div>
+            <div class="stat"><span>Prepaid share</span><b class="mono">10%</b></div>
+            <div class="stat"><span>Pincode band</span><b>201013 · medium</b></div>
+            <div class="legend" style="margin-top:8px">Pushing prepaid from ₹300 to ₹800 moves predicted risk to 0.19 and protects your own credit.</div>
+            <button class="btn brass sm" style="margin-top:10px">Offer prepaid discount</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- E5 -->
+  <div class="pane" id="p-e5">
+    <div class="grid g2" style="margin-bottom:16px">
+      <div class="card">
+        <div class="card-h"><h4>Efficiency score breakdown</h4><span class="tag t-mute tag">rolling 30 days</span></div>
+        <div class="card-b">
+          <div class="hbar-row"><span>Conversion 25%</span><div class="hbar"><i style="width:58%"></i></div><b class="mono r">58</b></div>
+          <div class="hbar-row"><span>Value per lead 25%</span><div class="hbar"><i style="width:71%"></i></div><b class="mono r">71</b></div>
+          <div class="hbar-row"><span>Delivery quality 20%</span><div class="hbar"><i style="width:44%;background:var(--clay)"></i></div><b class="mono r">44</b></div>
+          <div class="hbar-row"><span>Upsell index 15%</span><div class="hbar"><i style="width:86%;background:var(--vine)"></i></div><b class="mono r">86</b></div>
+          <div class="hbar-row"><span>Discipline 10%</span><div class="hbar"><i style="width:79%"></i></div><b class="mono r">79</b></div>
+          <div class="hbar-row"><span>Data hygiene 5%</span><div class="hbar"><i style="width:92%;background:var(--vine)"></i></div><b class="mono r">92</b></div>
+          <div style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px" class="hbar-row"><span><b>Weighted EES</b></span><div class="hbar"><i style="width:66%;background:var(--ink)"></i></div><b class="mono r" style="font-size:15px">66.4</b></div>
+          <div class="note bad" style="margin-top:12px"><b>Delivery quality is what is holding you back.</b> Your upsell skill scores 86 — the best on the team — but 8% RTO against a team average of 4% pulls the weighted score down almost nine points. Every point of RTO you remove is worth more than another order.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h4>Your month</h4></div>
+        <div class="card-b">
+          <div class="grid g2" style="gap:10px;margin-bottom:14px">
+            <div class="kpi" style="padding:11px"><div class="kpi-l">Orders delivered</div><div class="kpi-v" style="font-size:21px">43</div></div>
+            <div class="kpi" style="padding:11px"><div class="kpi-l">AOV</div><div class="kpi-v" style="font-size:21px">₹2,784</div></div>
+            <div class="kpi v" style="padding:11px"><div class="kpi-l">Upsell index</div><div class="kpi-v" style="font-size:21px">2.34×</div></div>
+            <div class="kpi c" style="padding:11px"><div class="kpi-l">Clawback</div><div class="kpi-v" style="font-size:21px">₹9,560</div></div>
+          </div>
+          <h3 class="ch" style="margin-bottom:8px">Where your value came from</h3>
+          <div class="hbar-row"><span>Breast Care</span><div class="hbar"><i style="width:100%"></i></div><b class="mono r">₹62.8k</b></div>
+          <div class="hbar-row"><span>Skinwise</span><div class="hbar"><i style="width:40%"></i></div><b class="mono r">₹25.1k</b></div>
+          <div class="hbar-row"><span>Slimming Care</span><div class="hbar"><i style="width:23%"></i></div><b class="mono r">₹14.6k</b></div>
+          <div class="hbar-row"><span>Intimate Care</span><div class="hbar"><i style="width:16%"></i></div><b class="mono r">₹10.3k</b></div>
+          <div class="hbar-row"><span>Face Care</span><div class="hbar"><i style="width:4%"></i></div><b class="mono r">₹2.7k</b></div>
+          <div class="hbar-row"><span>Customisation</span><div class="hbar"><i style="width:4%"></i></div><b class="mono r">₹2.6k</b></div>
+          <div class="fixnote"><span class="fx">FIX</span><div>Your Skinwise sales appear here. On the current Achieve Report they show as ₹0 — the whole line is booked under Razorveda, so about 16% of your value is invisible in the company's product numbers.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h4>Incentive statement · August 2026</h4><span class="tag t-warn tag">Provisional until month close</span></div>
+      <div class="tw"><table>
+        <thead><tr><th>Line</th><th>Basis</th><th class="r">Amount</th></tr></thead>
+        <tbody>
+          <tr><td>Realised credited value</td><td>Delivered orders only</td><td class="r mono">₹1,19,720</td></tr>
+          <tr><td>Base slab</td><td>₹1L band → 2.0%</td><td class="r mono">₹2,394</td></tr>
+          <tr><td>Delivery-quality multiplier</td><td>RTO 8% → ×1.00 (no bonus, no penalty)</td><td class="r mono">₹0</td></tr>
+          <tr><td>Prepaid bonus</td><td>Prepaid ratio 21% → below 30% threshold</td><td class="r mono">₹0</td></tr>
+          <tr><td>Skinwise SPIF</td><td>Q3 push · +1% on ₹25,100</td><td class="r mono">₹251</td></tr>
+          <tr><td>Repeat-customer bonus</td><td>11 orders from Buyer Fq ≥ 3 · ₹100 each</td><td class="r mono">₹1,100</td></tr>
+          <tr><td>Clawback</td><td>2 orders returned after delivery</td><td class="r mono" style="color:var(--clay)">−₹191</td></tr>
+          <tr style="background:#FAFBFC"><td><b>Projected payout</b></td><td>Settles on realised value at month close</td><td class="r mono" style="font-size:15px"><b>₹3,554</b></td></tr>
+        </tbody>
+      </table></div>
+      <div class="card-b" style="border-top:1px solid var(--line2)">
+        <div class="note ok"><b>The rep can see exactly how they are paid, as they sell.</b> No monthly reconciliation meeting, no spreadsheet argument. If they disagree with a number they can click through to the orders behind it.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 05 MIS ═══════════════ -->
+<section class="view" id="v-mis">
+  <div class="eyebrow">05 — Reports &amp; MIS</div>
+  <h1 class="vt">What management sees</h1>
+  <p class="vsub">Every figure below reads from the certified views in the semantic layer. Nobody prepares any of it. Refresh is fifteen minutes, and the daily digest pushes the summary out at 21:00 whether anyone opens the console or not.</p>
+
+  <div class="tabs" data-tabs="mis">
+    <button class="on" data-p="m1">Executive one-pager</button>
+    <button data-p="m2">Scoreboard</button>
+    <button data-p="m7">Daily &amp; monthly MIS</button>
+    <button data-p="m3">Product P&amp;L</button>
+    <button data-p="m4">Source funnel</button>
+    <button data-p="m5">Customer &amp; repeat</button>
+    <button data-p="m6">Report catalogue</button>
+  </div>
+
+  <!-- M1 -->
+  <div class="pane on" id="p-m1">
+    <div class="grid g5" style="margin-bottom:18px">
+      <div class="kpi"><div class="kpi-l">Team target</div><div class="kpi-v">₹14.90L</div><div class="kpi-d">7 active reps</div></div>
+      <div class="kpi v"><div class="kpi-l">Realised MTD</div><div class="kpi-v">₹6.09L</div><div class="kpi-d">40.9% · 12 days left</div></div>
+      <div class="kpi i"><div class="kpi-l">Orders delivered</div><div class="kpi-v">284</div><div class="kpi-d">integer, counted</div></div>
+      <div class="kpi c"><div class="kpi-l">RTO</div><div class="kpi-v">4.0%</div><div class="kpi-d">₹24,376 lost MTD</div></div>
+      <div class="kpi"><div class="kpi-l">Required per day</div><div class="kpi-v">₹77,600</div><div class="kpi-d">RTO-adjusted per rep</div></div>
+    </div>
+
+    <div class="grid g21">
+      <div class="card">
+        <div class="card-h"><h4>Pace against target</h4><span class="tag t-mute tag">refreshed 4 min ago</span></div>
+        <div class="card-b">
+          <svg viewBox="0 0 720 220" style="width:100%;height:auto" role="img" aria-label="Monthly pace chart">
+            <line x1="40" y1="180" x2="700" y2="180" stroke="#D4D9E0"/>
+            <line x1="40" y1="20" x2="40" y2="180" stroke="#D4D9E0"/>
+            <text x="8" y="24" class="sv-n">15L</text><text x="8" y="104" class="sv-n">7.5L</text><text x="8" y="184" class="sv-n">0</text>
+            <!-- required pace -->
+            <line x1="40" y1="180" x2="700" y2="20" stroke="#8C95A4" stroke-width="1.4" stroke-dasharray="5 4"/>
+            <text x="600" y="46" class="sv-n" style="fill:#8C95A4">required pace</text>
+            <!-- actual -->
+            <polyline points="40,180 88,172 136,160 184,151 232,139 280,128 328,120 376,110 424,101 472,92 520,86 568,115" fill="none" stroke="#1C6B49" stroke-width="2.4"/>
+            <circle cx="568" cy="115" r="4" fill="#1C6B49"/>
+            <text x="500" y="136" class="sv-n" style="fill:#1C6B49">actual ₹6.09L</text>
+            <!-- forecast -->
+            <polyline points="568,115 616,92 664,74 700,62" fill="none" stroke="#C08A1E" stroke-width="2.2" stroke-dasharray="5 4"/>
+            <text x="596" y="58" class="sv-n" style="fill:#C08A1E">forecast ₹12.4L</text>
+            <text x="40" y="200" class="sv-n">1 Aug</text><text x="330" y="200" class="sv-n">15 Aug</text><text x="660" y="200" class="sv-n">31 Aug</text>
+          </svg>
+          <div class="note bad" style="margin-top:8px"><b>Pipeline-weighted forecast lands at ₹12.4L against a ₹14.9L target.</b> The current sheet forecasts by multiplying today's per-day average by the days remaining, which ignores what is actually sitting in the pipeline and never subtracts expected RTO. It has been over-forecasting all month.</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-h"><h4>Booked vs realised</h4></div>
+          <div class="card-b">
+            <div class="ribbon" style="height:18px"><span class="rb-credit" style="width:53%"></span><span class="rb-unreal" style="width:43%"></span><span class="rb-claw" style="width:4%"></span></div>
+            <div class="rb-key"><span><i style="background:var(--vine)"></i>Realised ₹6.09L</span><span><i style="background:#C4CBD6"></i>In transit ₹4.94L</span><span><i style="background:var(--clay)"></i>RTO ₹0.46L</span></div>
+            <div class="legend" style="margin-top:10px">One ledger produces both numbers, so realised can never exceed booked. On the current Achieve Report, Divya shows ₹2,16,785 achieved against ₹2,10,638 booked — which cannot happen.</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h4>Answered instantly</h4></div>
+          <div class="card-b" style="font-size:12.3px">
+            <div class="stat"><span>Best source by delivered value/lead</span><b>Delivered repeat</b></div>
+            <div class="stat"><span>Best product line</span><b>Breast Care ₹9.99L</b></div>
+            <div class="stat"><span>Highest conversion</span><b>Nikita 18.4%</b></div>
+            <div class="stat"><span>Highest upsell index</span><b>Riya 2.34×</b></div>
+            <div class="stat"><span>Customers due this week</span><b>142</b></div>
+            <div class="stat"><span>Worst RTO</span><b style="color:var(--clay)">Kajal 41%</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- M2 -->
+  <div class="pane" id="p-m2">
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-h"><h4>Live team scoreboard</h4><span class="tag t-ok tag">reads a table, not 72 cell addresses</span></div>
+      <div class="tw"><table>
+        <thead><tr><th>#</th><th>Rep</th><th class="r">Target</th><th class="r">Booked</th><th class="r">Realised</th><th style="width:110px">Achieved</th><th class="r">Orders</th><th class="r">RTO</th><th class="r">Conv.</th><th class="r">Upsell</th><th class="r">EES</th></tr></thead>
+        <tbody id="scoreBody"></tbody>
+      </table></div>
+      <div class="card-b" style="border-top:1px solid var(--line2)">
+        <div class="fixnote"><span class="fx">FIX</span><div>Order counts are integers here. The current Achieve Report shows 73.8, 84.8 and 5.22 orders because volume is derived by dividing value by an average — there is no order ledger to count from.</div></div>
+      </div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-h"><h4>Required booking, corrected</h4><span class="tag t-bad tag">the 1.15 problem</span></div>
+        <div class="tw"><table>
+          <thead><tr><th>Rep</th><th class="r">Actual RTO</th><th class="r">Current target</th><th class="r">Correct target</th><th class="r">Understated by</th></tr></thead>
+          <tbody>
+            <tr><td>Kajal</td><td class="r mono">41%</td><td class="r mono">₹10,511</td><td class="r mono">₹15,491</td><td class="r mono" style="color:var(--clay)">47%</td></tr>
+            <tr><td>Riya Chauhan</td><td class="r mono">8%</td><td class="r mono">₹17,277</td><td class="r mono">₹16,330</td><td class="r mono" style="color:var(--vine)">−5%</td></tr>
+            <tr><td>Divya</td><td class="r mono">4%</td><td class="r mono">₹17,558</td><td class="r mono">₹15,904</td><td class="r mono" style="color:var(--vine)">−9%</td></tr>
+            <tr><td>Nikita</td><td class="r mono">3%</td><td class="r mono">₹14,736</td><td class="r mono">₹13,210</td><td class="r mono" style="color:var(--vine)">−10%</td></tr>
+            <tr><td>Akruti</td><td class="r mono">2%</td><td class="r mono">₹8,336</td><td class="r mono">₹7,397</td><td class="r mono" style="color:var(--vine)">−11%</td></tr>
+          </tbody>
+        </table></div>
+        <div class="card-b" style="border-top:1px solid var(--line2)">
+          <div class="note bad"><b>Every rep currently gets the same flat 15% buffer.</b> Verified to four decimal places across all eleven rows: required booking is always per-day-required-delivery × 1.15, regardless of whether a rep's actual RTO is 2% or 41%. Kajal is being given a target she could hit and still miss her delivery number by a third.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h4>Assignment quality audit</h4><span class="tag t-info tag">weekly · for the admin</span></div>
+        <div class="card-b">
+          <p style="font-size:12.3px;color:var(--muted);margin-bottom:10px">Since you assign by hand, this is the report that tells you whether your judgement is paying off — which rep converts which kind of lead best.</p>
+          <div class="tw"><table>
+            <thead><tr><th>Rep</th><th>Best on</th><th class="r">Yield</th><th>Weakest on</th><th class="r">Yield</th></tr></thead>
+            <tbody>
+              <tr><td>Nikita</td><td>Shopify upsell</td><td class="r mono" style="color:var(--vine)">74%</td><td>Meta ads</td><td class="r mono">4%</td></tr>
+              <tr><td>Divya</td><td>Delivered repeat</td><td class="r mono" style="color:var(--vine)">19%</td><td>RTO recovery</td><td class="r mono">3%</td></tr>
+              <tr><td>Riya Chauhan</td><td>Breast Care upsell</td><td class="r mono" style="color:var(--vine)">2.34×</td><td>Low-value COD</td><td class="r mono">8% RTO</td></tr>
+              <tr><td>Akruti</td><td>WhatsApp campaign</td><td class="r mono" style="color:var(--vine)">21%</td><td>Skinwise</td><td class="r mono">6%</td></tr>
+              <tr><td>Priyanka</td><td>Meta ads</td><td class="r mono">9%</td><td>Shopify</td><td class="r mono">31%</td></tr>
+            </tbody>
+          </table></div>
+          <div class="note ok" style="margin-top:12px"><b>This is the report that makes you better at assigning.</b> Nikita closes 74% of Shopify upsell leads and almost nothing on Meta ads. Riya has the best upsell skill on the team but the second-worst RTO. Once you can see this, giving Shopify batches to Nikita and high-value Breast Care to Riya stops being a hunch and starts being a decision.</div>
+          <div class="stat" style="margin-top:12px"><span>Leads assigned but untouched 48h</span><b style="color:var(--clay)">14</b></div>
+          <div class="stat"><span>Leads that expired unworked</span><b style="color:var(--clay)">174 · "Other user" block</b></div>
+          <div class="stat"><span>Average time from upload to assign</span><b>1.4 hours</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- M7 daily/monthly MIS -->
+  <div class="pane" id="p-m7">
+    <div class="note ok" style="margin-bottom:16px"><b>This is the MIS team's entire manual output, rebuilt as scheduled reports.</b> Nobody types any of it. Each one has a fixed owner, a fixed time, and a fixed set of columns — so the numbers are identical no matter who looks and there is no version floating around on someone's laptop.</div>
+
+    <h2 class="sec" style="margin-top:0">Daily reports <span>every working day</span></h2>
+    <div class="card" style="margin-bottom:18px"><div class="tw"><table>
+      <thead><tr><th style="width:210px">Report</th><th style="width:80px">Time</th><th style="width:120px">Goes to</th><th>What it contains</th><th style="width:150px">Replaces</th></tr></thead>
+      <tbody>
+        <tr><td><b>Employee Daily Performance</b></td><td class="mono">21:00</td><td>Admin + owner</td><td>Per rep: leads assigned, dials, connects, connectivity %, CD/ND, orders booked, order value, orders delivered, RTO, follow-ups due vs done, untouched leads</td><td class="mono">Team Audit tab</td></tr>
+        <tr><td><b>Daily Sales Register</b></td><td class="mono">21:00</td><td>Admin + owner</td><td>Every order booked today with customer, source, products, value, base, credit, payment split, state, rep</td><td class="mono">Order sheets</td></tr>
+        <tr><td><b>Daily Dispatch &amp; Status</b></td><td class="mono">21:00</td><td>Admin + ops</td><td>Dispatched, in transit, OFD, delivered, RTO, NDR — counts and value, with ageing on anything stuck over 7 days</td><td class="mono">Manual chase</td></tr>
+        <tr><td><b>Daily Lead Pool</b></td><td class="mono">08:00</td><td>Admin</td><td>What arrived, what was assigned, what is still unassigned, what is ageing past 24h</td><td class="mono">— new</td></tr>
+        <tr><td><b>Rep Morning Plan</b></td><td class="mono">07:30</td><td>Each rep</td><td>Their gap to target, overdue follow-ups, repeat-due customers, fresh leads, yesterday's realised value</td><td class="mono">PlaningSheet</td></tr>
+        <tr><td><b>Exception Digest</b></td><td class="mono">08:00</td><td>Admin</td><td>Files not uploaded, unresolved duplicates, unmapped products, untouched leads, high-RTO-risk orders awaiting dispatch</td><td class="mono">— new</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-h"><h4>Employee Daily Performance — 20 August</h4><span class="tag t-ok tag">auto-generated 21:00</span></div>
+      <div class="tw"><table>
+        <thead><tr><th>Rep</th><th class="r">Assigned</th><th class="r">Dials</th><th class="r">Connects</th><th class="r">Conn %</th><th class="r">CD</th><th class="r">Orders</th><th class="r">Value</th><th class="r">F/up due</th><th class="r">F/up done</th><th class="r">Untouched</th></tr></thead>
+        <tbody>
+          <tr><td><b>Nikita</b></td><td class="r mono">62</td><td class="r mono">19</td><td class="r mono">6</td><td class="r mono">31.6%</td><td class="r mono">2</td><td class="r mono">2</td><td class="r mono">₹5,598</td><td class="r mono">9</td><td class="r mono">9</td><td class="r mono">0</td></tr>
+          <tr><td><b>Divya</b></td><td class="r mono">58</td><td class="r mono">32</td><td class="r mono">9</td><td class="r mono">28.1%</td><td class="r mono">1</td><td class="r mono">2</td><td class="r mono">₹3,000</td><td class="r mono">12</td><td class="r mono">11</td><td class="r mono">1</td></tr>
+          <tr><td><b>Riya Chauhan</b></td><td class="r mono">55</td><td class="r mono">30</td><td class="r mono">1</td><td class="r mono">3.3%</td><td class="r mono">0</td><td class="r mono">3</td><td class="r mono">₹4,850</td><td class="r mono">15</td><td class="r mono">11</td><td class="r mono" style="color:var(--clay)">3</td></tr>
+          <tr><td><b>Akruti</b></td><td class="r mono">47</td><td class="r mono">39</td><td class="r mono">15</td><td class="r mono">38.5%</td><td class="r mono">1</td><td class="r mono">2</td><td class="r mono">₹2,650</td><td class="r mono">8</td><td class="r mono">8</td><td class="r mono">0</td></tr>
+          <tr><td><b>Priti</b></td><td class="r mono">40</td><td class="r mono">38</td><td class="r mono">20</td><td class="r mono">52.6%</td><td class="r mono">9</td><td class="r mono">1</td><td class="r mono">₹2,700</td><td class="r mono">6</td><td class="r mono">6</td><td class="r mono">0</td></tr>
+          <tr><td><b>Priyanka</b></td><td class="r mono">31</td><td class="r mono">0</td><td class="r mono">0</td><td class="r mono">0.0%</td><td class="r mono">0</td><td class="r mono">0</td><td class="r mono">₹0</td><td class="r mono">4</td><td class="r mono" style="color:var(--clay)">0</td><td class="r mono" style="color:var(--clay)">31</td></tr>
+          <tr><td><b>Kajal</b></td><td class="r mono">26</td><td class="r mono">0</td><td class="r mono">0</td><td class="r mono">0.0%</td><td class="r mono">0</td><td class="r mono">0</td><td class="r mono">₹0</td><td class="r mono">7</td><td class="r mono" style="color:var(--clay)">0</td><td class="r mono" style="color:var(--clay)">26</td></tr>
+          <tr style="background:#FAFBFC"><td><b>Total</b></td><td class="r mono"><b>319</b></td><td class="r mono"><b>158</b></td><td class="r mono"><b>51</b></td><td class="r mono"><b>32.3%</b></td><td class="r mono"><b>13</b></td><td class="r mono"><b>10</b></td><td class="r mono"><b>₹18,798</b></td><td class="r mono"><b>61</b></td><td class="r mono"><b>45</b></td><td class="r mono"><b>61</b></td></tr>
+        </tbody>
+      </table></div>
+      <div class="card-b" style="border-top:1px solid var(--line2)">
+        <div class="note bad"><b>Two reps made zero dials today and neither noticed until this report existed.</b> Priyanka and Kajal hold 57 assigned leads between them and touched none of them. In the current sheet this is a row of zeros nobody reads. Here it is an alert at 14:00 the same day, and the leads return to the pool at 72 hours.</div>
+      </div>
+    </div>
+
+    <h2 class="sec">Weekly reports <span>Monday 09:00</span></h2>
+    <div class="card" style="margin-bottom:18px"><div class="tw"><table>
+      <thead><tr><th style="width:230px">Report</th><th>What it answers</th></tr></thead>
+      <tbody>
+        <tr><td><b>Weekly Team Pack</b></td><td>Week vs target, week-on-week movement per rep, best and worst days, pipeline entering next week</td></tr>
+        <tr><td><b>Source Performance</b></td><td>Which channel gave leads, which converted, value per lead, cost per delivered order where spend is entered</td></tr>
+        <tr><td><b>Assignment Quality</b></td><td>Which rep converts which kind of lead — the report that makes your manual assignment better each week</td></tr>
+        <tr><td><b>Follow-up Hygiene</b></td><td>Overdue follow-ups by rep and age, leads with no activity, leads approaching validity expiry</td></tr>
+        <tr><td><b>RTO Watch</b></td><td>RTO by rep, product, state, payment mode and value band, with the week's worst pincodes</td></tr>
+        <tr><td><b>Data Quality Scorecard</b></td><td>Duplicate rate, unmapped products, missing dispositions, rows parked as un-keyable</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <h2 class="sec">Monthly reports <span>1st of the month, ready by 09:00</span></h2>
+    <div class="grid g2" style="margin-bottom:18px">
+      <div class="card"><div class="card-h"><h4>Month-close pack</h4></div><div class="card-b" style="font-size:12.5px;line-height:1.95">
+        <b>Target vs Achievement</b> — per rep and team, booked vs realised, order counts as integers<br>
+        <b>Incentive Statement</b> — per rep, slab, multipliers, clawbacks, net payable, ready for approval<br>
+        <b>Product Line P&amp;L</b> — Breast Care, Skinwise, Slimming, Intimate, Face, Hair, Customisation<br>
+        <b>SKU Performance</b> — units, value, AOV, RTO %, repeat rate per SKU<br>
+        <b>Source P&amp;L</b> — leads, conversion, delivered value, value per lead, ROI where spend is entered<br>
+        <b>Geography Report</b> — state and top-100 pincode performance, RTO hotspots<br>
+        <b>Customer Report</b> — new vs repeat, buyer stage movement, LTV by cohort, dormant list<br>
+        <b>Operations Report</b> — dispatch TAT, courier comparison, NDR reasons, RTO recovery rate<br>
+        <b>Next-Month Plan</b> — required run rate per rep, pipeline carried forward, repeat-due volume
+      </div></div>
+      <div class="card"><div class="card-h"><h4>Target vs Achievement — August</h4><span class="tag t-warn tag">provisional, 20 Aug</span></div>
+        <div class="tw"><table>
+          <thead><tr><th>Rep</th><th class="r">Target</th><th class="r">Realised</th><th class="r">%</th><th class="r">Orders</th><th class="r">AOV</th><th class="r">Balance</th></tr></thead>
+          <tbody>
+            <tr><td>Nikita</td><td class="r mono">3.00L</td><td class="r mono">1.46L</td><td class="r mono">48.7%</td><td class="r mono">68</td><td class="r mono">2,150</td><td class="r mono">1.54L</td></tr>
+            <tr><td>Divya</td><td class="r mono">4.00L</td><td class="r mono">2.17L</td><td class="r mono">54.2%</td><td class="r mono">84</td><td class="r mono">2,581</td><td class="r mono">1.83L</td></tr>
+            <tr><td>Riya Chauhan</td><td class="r mono">3.00L</td><td class="r mono">1.20L</td><td class="r mono">39.9%</td><td class="r mono">58</td><td class="r mono">2,064</td><td class="r mono">1.80L</td></tr>
+            <tr><td>Akruti</td><td class="r mono">1.50L</td><td class="r mono">0.63L</td><td class="r mono">42.0%</td><td class="r mono">32</td><td class="r mono">1,969</td><td class="r mono">0.87L</td></tr>
+            <tr><td>Priti</td><td class="r mono">1.20L</td><td class="r mono">0.28L</td><td class="r mono">23.2%</td><td class="r mono">16</td><td class="r mono">1,743</td><td class="r mono">0.92L</td></tr>
+            <tr><td>Priyanka</td><td class="r mono">1.00L</td><td class="r mono">0.12L</td><td class="r mono">12.0%</td><td class="r mono">6</td><td class="r mono">1,996</td><td class="r mono">0.88L</td></tr>
+            <tr><td>Kajal</td><td class="r mono">1.20L</td><td class="r mono">0.10L</td><td class="r mono">8.6%</td><td class="r mono">5</td><td class="r mono">2,065</td><td class="r mono">1.10L</td></tr>
+            <tr style="background:#FAFBFC"><td><b>Team</b></td><td class="r mono"><b>14.90L</b></td><td class="r mono"><b>6.09L</b></td><td class="r mono"><b>40.9%</b></td><td class="r mono"><b>284</b></td><td class="r mono"><b>2,145</b></td><td class="r mono"><b>8.94L</b></td></tr>
+          </tbody>
+        </table></div>
+        <div class="card-b" style="border-top:1px solid var(--line2)">
+          <div class="fixnote"><span class="fx">FIX</span><div>Integer order counts and a real AOV. The current report shows 68.06 and 84.8 orders because volume is calculated by dividing value by an assumed average — there is no order ledger to count.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <h2 class="sec">On demand, any time <span>the questions management actually asks</span></h2>
+    <div class="card"><div class="tw"><table>
+      <thead><tr><th style="width:44%">Question</th><th style="width:34%">Screen that answers it</th><th>How long it takes today</th></tr></thead>
+      <tbody>
+        <tr><td>Product X ka kitna sale hua is month?</td><td>Product Line P&amp;L → SKU drill-down</td><td class="mono">half a day, and Skinwise comes back ₹0</td></tr>
+        <tr><td>Riya ne kitna revenue diya, aur kitna deliver hua?</td><td>Scoreboard → booked / realised / credited</td><td class="mono">chase the rep for her sheet</td></tr>
+        <tr><td>Kaunsa lead source sabse achha chala?</td><td>Source Funnel, ranked by value per lead</td><td class="mono">not answerable at all today</td></tr>
+        <tr><td>Kis campaign ka ROI best raha?</td><td>Campaign ROI (spend entered once per campaign)</td><td class="mono">not answerable at all today</td></tr>
+        <tr><td>Kaunse customers repeat ke liye due hain?</td><td>Repeat-Due Queue — already in the rep's worklist</td><td class="mono">manual re-upload, mostly missed</td></tr>
+        <tr><td>Kis state me RTO sabse zyada hai?</td><td>Geography Report → RTO hotspots</td><td class="mono">not answerable at all today</td></tr>
+        <tr><td>Kis rep ki conversion sabse achhi hai?</td><td>Scoreboard, source-normalised</td><td class="mono">a day of spreadsheet work</td></tr>
+        <tr><td>Pichle March me kya hua tha?</td><td>Any report, back-dated</td><td class="mono">whatever survives in old files</td></tr>
+      </tbody>
+    </table></div></div>
+  </div>
+
+  <!-- M3 -->
+  <div class="pane" id="p-m3">
+    <div class="note bad" style="margin-bottom:16px"><b>This is the report that is currently wrong.</b> The Achieve Report shows Skin-wise Revenue as ₹0 for all eleven reps. Riya's own order tabs contain ₹2,51,698 of Skinwise across 116 orders between April and August. The whole line is being booked under Razorveda, so the product P&amp;L cannot be used for a single decision.</div>
+
+    <div class="grid g21">
+      <div class="card">
+        <div class="card-h"><h4>Product line P&amp;L</h4><span class="tag t-ok tag">line-level allocation</span></div>
+        <div class="card-b">
+          <div class="hbar-row"><span>Breast Care</span><div class="hbar"><i style="width:100%"></i></div><b class="mono r">₹9,99,802</b></div>
+          <div class="hbar-row"><span>Skinwise</span><div class="hbar"><i style="width:25%;background:var(--vine)"></i></div><b class="mono r">₹2,51,698</b></div>
+          <div class="hbar-row"><span>Slimming Care</span><div class="hbar"><i style="width:15%"></i></div><b class="mono r">₹1,46,144</b></div>
+          <div class="hbar-row"><span>Intimate Care</span><div class="hbar"><i style="width:10%"></i></div><b class="mono r">₹1,03,083</b></div>
+          <div class="hbar-row"><span>Face Care</span><div class="hbar"><i style="width:3%"></i></div><b class="mono r">₹27,399</b></div>
+          <div class="hbar-row"><span>Customisation</span><div class="hbar"><i style="width:3%"></i></div><b class="mono r">₹26,600</b></div>
+          <div class="hbar-row"><span>Hair Care</span><div class="hbar"><i style="width:2%"></i></div><b class="mono r">₹19,000</b></div>
+          <div class="legend">Riya Chauhan, April–August 2026, from her own order sheets. Multi-line orders split across categories, which is why this cannot be done with a single "Product" column.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h4>Same data, as reported today</h4></div>
+        <div class="card-b">
+          <div class="stat"><span>Razorveda revenue</span><b>₹1,08,405</b></div>
+          <div class="stat"><span>Customisation revenue</span><b>₹11,315</b></div>
+          <div class="stat"><span><b>Skin-wise revenue</b></span><b style="color:var(--clay)">₹0</b></div>
+          <div class="stat"><span>Orders (Razorveda)</span><b>53.62</b></div>
+          <div class="stat"><span>Orders (Customisation)</span><b>4.74</b></div>
+          <div class="note bad" style="margin-top:12px">Three buckets where there are seven product lines, a zero where there is a quarter of a million rupees, and fractional order counts. Fixing the report will not fix this — the fix is a SKU master and line-level order rows.</div>
+        </div>
+      </div>
+    </div>
+
+    <h2 class="sec">SKU detail <span>drill-down from any line</span></h2>
+    <div class="card"><div class="tw"><table>
+      <thead><tr><th>SKU</th><th>Product</th><th>Line</th><th class="r">Orders</th><th class="r">Units</th><th class="r">Value</th><th class="r">AOV</th><th class="r">RTO</th><th class="r">Repeat rate</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">BC-014</td><td>Mamo Firm Cream 100gm</td><td>Breast Care</td><td class="r mono">118</td><td class="r mono">141</td><td class="r mono">₹2,41,400</td><td class="r mono">₹2,046</td><td class="r mono">6%</td><td class="r mono">31%</td></tr>
+        <tr><td class="mono">BC-021</td><td>Mamo Plus 2-in-1 100gm</td><td>Breast Care</td><td class="r mono">104</td><td class="r mono">127</td><td class="r mono">₹2,18,600</td><td class="r mono">₹2,102</td><td class="r mono">5%</td><td class="r mono">28%</td></tr>
+        <tr><td class="mono">BC-044</td><td>B Reduce Cream 100gm</td><td>Breast Care</td><td class="r mono">71</td><td class="r mono">83</td><td class="r mono">₹1,24,300</td><td class="r mono">₹1,751</td><td class="r mono">9%</td><td class="r mono">19%</td></tr>
+        <tr><td class="mono">SW-007</td><td>Skinwise Pigmentation Cream</td><td>Skinwise</td><td class="r mono">44</td><td class="r mono">51</td><td class="r mono">₹86,900</td><td class="r mono">₹1,975</td><td class="r mono">4%</td><td class="r mono">37%</td></tr>
+        <tr><td class="mono">SW-012</td><td>Special Pigmentation Serum</td><td>Skinwise</td><td class="r mono">31</td><td class="r mono">34</td><td class="r mono">₹71,200</td><td class="r mono">₹2,297</td><td class="r mono">3%</td><td class="r mono">41%</td></tr>
+        <tr><td class="mono">SL-003</td><td>Geluslim Gel 100gm</td><td>Slimming Care</td><td class="r mono">38</td><td class="r mono">44</td><td class="r mono">₹68,400</td><td class="r mono">₹1,800</td><td class="r mono">7%</td><td class="r mono">22%</td></tr>
+        <tr><td class="mono">IC-005</td><td>Vg Tone Gel 200gm</td><td>Intimate Care</td><td class="r mono">29</td><td class="r mono">32</td><td class="r mono">₹52,100</td><td class="r mono">₹1,797</td><td class="r mono">8%</td><td class="r mono">17%</td></tr>
+      </tbody>
+    </table></div></div>
+  </div>
+
+  <!-- M4 -->
+  <div class="pane" id="p-m4">
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-h"><h4>Source funnel</h4><span class="tag t-mute tag">received → assigned → connected → converted → delivered</span></div>
+      <div class="tw"><table>
+        <thead><tr><th>Source</th><th class="r">Received</th><th class="r">Connected</th><th class="r">Conn. %</th><th class="r">Orders</th><th class="r">Conv. %</th><th class="r">Delivered</th><th class="r">Value</th><th class="r">Value / lead</th><th>Verdict</th></tr></thead>
+        <tbody id="funnelBody"></tbody>
+      </table></div>
+      <div class="card-b" style="border-top:1px solid var(--line2)">
+        <div class="note ok"><b>Delivered-data repeat calls produce the highest value per lead on the board and cost nothing to acquire.</b> They are also the least systematic part of the current process — a manual re-upload someone remembers to do. The repeat-purchase engine turns that into a calculated queue, which is the single highest-return automation in the build.</div>
+      </div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-h"><h4>Data block yield vs shelf life</h4></div>
+        <div class="card-b">
+          <div class="tw"><table>
+            <thead><tr><th>Block</th><th class="r">Size</th><th>Given</th><th>Valid till</th><th class="r">Target</th><th class="r">Achieved</th><th class="r">Yield</th></tr></thead>
+            <tbody>
+              <tr><td>Delivered data</td><td class="r mono">187</td><td class="mono">01 Aug</td><td class="mono">31 Aug</td><td class="r mono">37</td><td class="r mono">21</td><td class="r mono">11.2%</td></tr>
+              <tr><td>AiSensy / Combird</td><td class="r mono">164</td><td class="mono">01 Aug</td><td class="mono">15 Aug</td><td class="r mono">33</td><td class="r mono">32</td><td class="r mono" style="color:var(--vine)">19.5%</td></tr>
+              <tr><td>Other user</td><td class="r mono">174</td><td class="mono">01 Aug</td><td class="mono">15 Aug</td><td class="r mono">52</td><td class="r mono">0</td><td class="r mono" style="color:var(--clay)">0.0%</td></tr>
+              <tr><td>Meta ads</td><td class="r mono">30</td><td class="mono">18 Aug</td><td class="mono">25 Aug</td><td class="r mono">2</td><td class="r mono">1</td><td class="r mono">3.3%</td></tr>
+            </tbody>
+          </table></div>
+          <div class="note bad" style="margin-top:12px"><b>174 leads, expired five days ago, zero orders.</b> In the current sheet this sits quietly in a row. Here it triggers an alert at 48 hours untouched and the leads return to the pool at 72 — the block never reaches expiry with nothing done.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h4>Connectivity by hour</h4><span class="tag t-info tag">drives shift planning</span></div>
+        <div class="card-b">
+          <svg viewBox="0 0 640 200" style="width:100%;height:auto" role="img" aria-label="Connectivity by hour of day">
+            <line x1="34" y1="160" x2="620" y2="160" stroke="#D4D9E0"/>
+            <g fill="#2A3044">
+              <rect x="44" y="118" width="38" height="42"/><rect x="94" y="96" width="38" height="64"/>
+              <rect x="144" y="74" width="38" height="86"/><rect x="194" y="60" width="38" height="100" fill="#C08A1E"/>
+              <rect x="244" y="88" width="38" height="72"/><rect x="294" y="126" width="38" height="34"/>
+              <rect x="344" y="112" width="38" height="48"/><rect x="394" y="82" width="38" height="78"/>
+              <rect x="444" y="66" width="38" height="94" fill="#C08A1E"/><rect x="494" y="90" width="38" height="70"/>
+              <rect x="544" y="122" width="38" height="38"/>
+            </g>
+            <g class="sv-n">
+              <text x="52" y="176">10</text><text x="102" y="176">11</text><text x="152" y="176">12</text>
+              <text x="202" y="176">13</text><text x="252" y="176">14</text><text x="302" y="176">15</text>
+              <text x="352" y="176">16</text><text x="402" y="176">17</text><text x="452" y="176">18</text>
+              <text x="502" y="176">19</text><text x="552" y="176">20</text>
+            </g>
+            <text x="34" y="24" class="sv-lab">Answer rate by hour</text>
+            <text x="180" y="52" class="sv-n" style="fill:#C08A1E">peak 1pm</text>
+            <text x="430" y="58" class="sv-n" style="fill:#C08A1E">peak 6pm</text>
+          </svg>
+          <div class="legend">Two clear windows. Dialling volume today is spread evenly across the shift, which means a meaningful share of attempts are being made in the 3pm trough.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- M5 -->
+  <div class="pane" id="p-m5">
+    <div class="grid g4" style="margin-bottom:18px">
+      <div class="kpi"><div class="kpi-l">Customer base</div><div class="kpi-v">4,812</div><div class="kpi-d">deduplicated</div></div>
+      <div class="kpi v"><div class="kpi-l">Repeat buyers</div><div class="kpi-v">1,104</div><div class="kpi-d">22.9% · Buyer Fq ≥ 2</div></div>
+      <div class="kpi"><div class="kpi-l">Due this week</div><div class="kpi-v">142</div><div class="kpi-d">auto-queued to owners</div></div>
+      <div class="kpi c"><div class="kpi-l">Dormant</div><div class="kpi-v">687</div><div class="kpi-d">win-back candidates</div></div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-h"><h4>Buyer stage distribution</h4></div>
+        <div class="card-b">
+          <div class="hbar-row"><span>Prospect</span><div class="hbar"><i style="width:100%;background:#A9B2C0"></i></div><b class="mono r">3,021</b></div>
+          <div class="hbar-row"><span>First purchase</span><div class="hbar"><i style="width:22%"></i></div><b class="mono r">687</b></div>
+          <div class="hbar-row"><span>Second</span><div class="hbar"><i style="width:13%"></i></div><b class="mono r">402</b></div>
+          <div class="hbar-row"><span>Third</span><div class="hbar"><i style="width:8%"></i></div><b class="mono r">241</b></div>
+          <div class="hbar-row"><span>Repeat</span><div class="hbar"><i style="width:12%;background:var(--vine)"></i></div><b class="mono r">368</b></div>
+          <div class="hbar-row"><span>Loyal</span><div class="hbar"><i style="width:3%;background:var(--vine)"></i></div><b class="mono r">93</b></div>
+          <div class="legend">Stage is derived from delivered orders. Nobody types it, so it can never drift out of date — unlike the New Client / User Client column, which currently contains PIN codes on fourteen rows.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h4>Repeat-purchase due queue</h4><span class="tag t-ok tag">auto-generated</span></div>
+        <div class="tw"><table>
+          <thead><tr><th>Customer</th><th>Last product</th><th class="r">Delivered</th><th class="r">Due</th><th>Owner</th><th class="r">LTV</th></tr></thead>
+          <tbody>
+            <tr><td>Bhagyashree Dalvi</td><td>Detox Drink 200ml</td><td class="r mono">05 Jul</td><td class="r mono" style="color:var(--brass-d)">21 Aug</td><td>Riya</td><td class="r mono">₹5,000</td></tr>
+            <tr><td>Aarti Nayaka</td><td>Mamo Firm Cream</td><td class="r mono">15 Jul</td><td class="r mono">25 Aug</td><td>Riya</td><td class="r mono">₹4,500</td></tr>
+            <tr><td>SK Muntaz</td><td>Skinwise Special Serum</td><td class="r mono">05 Jun</td><td class="r mono" style="color:var(--brass-d)">27 Aug</td><td>Riya</td><td class="r mono">₹7,400</td></tr>
+            <tr><td>Roslyn Reang</td><td>Mamo Firm Cream</td><td class="r mono">11 Jul</td><td class="r mono">21 Aug</td><td>Megha</td><td class="r mono">₹1,651</td></tr>
+            <tr><td>Priyanka</td><td>Vg Tone Gel 200gm</td><td class="r mono">10 Jul</td><td class="r mono">24 Aug</td><td>Riya</td><td class="r mono">₹4,500</td></tr>
+          </tbody>
+        </table></div>
+        <div class="card-b" style="border-top:1px solid var(--line2)">
+          <div class="fixnote"><span class="fx">NEW</span><div>Delivery date plus the SKU's usage days, minus five. No upload, no list, no reminder to anyone. The customer simply appears in the owning rep's worklist on the right morning.</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- M6 -->
+  <div class="pane" id="p-m6">
+    <div class="grid g3">
+      <div class="card"><div class="card-h"><h4>Sales &amp; revenue</h4></div><div class="card-b" style="font-size:12.5px;line-height:1.9">
+        Daily / weekly / monthly revenue<br>Booked vs realised<br>Product line P&amp;L<br>SKU-level sales<br>AOV trend<br>Discount &amp; coupon impact<br>Prepaid vs COD mix<br>Geography heatmap
+      </div></div>
+      <div class="card"><div class="card-h"><h4>Employee performance</h4></div><div class="card-b" style="font-size:12.5px;line-height:1.9">
+        Live scoreboard<br>Target vs achieved<br>Efficiency breakdown<br>Dialling &amp; connectivity<br>CD / ND analysis<br>Upsell index league<br>RTO by rep<br>Follow-up SLA<br>Untouched-lead exception<br>Incentive payout sheet
+      </div></div>
+      <div class="card"><div class="card-h"><h4>Lead &amp; source</h4></div><div class="card-b" style="font-size:12.5px;line-height:1.9">
+        Source funnel<br>Cost per delivered order<br>Campaign ROI<br>Lead ageing pyramid<br>Block yield vs validity<br>Connectivity by hour<br>Dead-lead analysis
+      </div></div>
+      <div class="card"><div class="card-h"><h4>Customer</h4></div><div class="card-b" style="font-size:12.5px;line-height:1.9">
+        New vs existing<br>Buyer stage distribution<br>Repeat-due queue<br>Cohort retention<br>LTV by acquisition source<br>Dormant &amp; win-back<br>Cross-purchase matrix
+      </div></div>
+      <div class="card"><div class="card-h"><h4>Operations &amp; risk</h4></div><div class="card-b" style="font-size:12.5px;line-height:1.9">
+        Order status pipeline<br>Dispatch &amp; delivery TAT<br>RTO by rep / product / geo / payment<br>NDR reasons<br>Pre-dispatch risk queue<br>Courier comparison
+      </div></div>
+      <div class="card"><div class="card-h"><h4>Management</h4></div><div class="card-b" style="font-size:12.5px;line-height:1.9">
+        Executive one-pager<br>Month-close pack<br>MTD pace vs required<br>Rolling forecast<br>Capacity utilisation<br>Data-quality scorecard<br>Assignment quality audit
+      </div></div>
+    </div>
+
+    <h2 class="sec">Push schedule <span>reports nobody opens are reports nobody uses</span></h2>
+    <div class="card"><div class="tw"><table>
+      <thead><tr><th>When</th><th>Who</th><th>What</th><th>Channel</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">07:30 daily</td><td>Each rep</td><td>Target gap, overdue follow-ups, repeat-due customers, yesterday's realised value</td><td>WhatsApp + email</td></tr>
+        <tr><td class="mono">08:00 daily</td><td>Admins</td><td>Files pending, unresolved duplicates, untouched leads, high-risk orders awaiting dispatch</td><td>Email</td></tr>
+        <tr><td class="mono">21:00 daily</td><td>Management</td><td>One-pager: revenue, orders, RTO, conversion, top rep, top product</td><td>WhatsApp</td></tr>
+        <tr><td class="mono">Mon 09:00</td><td>Management</td><td>Weekly pack including allocation fairness audit</td><td>Email</td></tr>
+        <tr><td class="mono">1st of month</td><td>Owner + admins</td><td>Month close with incentive computation ready for approval</td><td>Email</td></tr>
+        <tr><td class="mono">Real time</td><td>Relevant party</td><td>Target hit · RTO spike · ingestion failure · reveal anomaly · rep inactive 2h in shift</td><td>In-app + WhatsApp</td></tr>
+      </tbody>
+    </table></div></div>
+  </div>
+</section>
+
+<!-- ═══════════════ 06 RULES ═══════════════ -->
+<section class="view" id="v-rules">
+  <div class="eyebrow">06 — Lifecycle &amp; rules</div>
+  <h1 class="vt">The rules that make the numbers true</h1>
+  <p class="vsub">Four state machines and one rule table. Everything the platform decides comes from these, and all of them are admin-editable without a developer.</p>
+
+  <h2 class="sec">Customer lifecycle <span>derived from delivered orders, never typed</span></h2>
+  <div class="flowwrap">
+    <svg viewBox="0 0 1120 260" role="img" aria-label="Customer lifecycle state machine">
+      <defs><marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8C95A4"/></marker></defs>
+      <g>
+        <rect x="20" y="60" width="120" height="46" rx="2" fill="#fff" stroke="#A9B2C0"/><text x="46" y="80" class="sv-t" style="font-weight:600">PROSPECT</text><text x="34" y="96" class="sv-n">lead, no order</text>
+        <rect x="180" y="60" width="120" height="46" rx="2" fill="#fff" stroke="#C08A1E" stroke-width="2"/><text x="216" y="80" class="sv-t" style="font-weight:600">FIRST</text><text x="196" y="96" class="sv-n">1 delivered</text>
+        <rect x="340" y="60" width="120" height="46" rx="2" fill="#fff" stroke="#C08A1E" stroke-width="2"/><text x="376" y="80" class="sv-t" style="font-weight:600">SECOND</text><text x="358" y="96" class="sv-n">2 delivered</text>
+        <rect x="500" y="60" width="120" height="46" rx="2" fill="#fff" stroke="#C08A1E" stroke-width="2"/><text x="540" y="80" class="sv-t" style="font-weight:600">THIRD</text><text x="518" y="96" class="sv-n">3 delivered</text>
+        <rect x="660" y="60" width="120" height="46" rx="2" fill="#F1F8F4" stroke="#1C6B49" stroke-width="2"/><text x="694" y="80" class="sv-t" style="font-weight:600">REPEAT</text><text x="678" y="96" class="sv-n">4–5 delivered</text>
+        <rect x="820" y="60" width="120" height="46" rx="2" fill="#F1F8F4" stroke="#1C6B49" stroke-width="2"/><text x="860" y="80" class="sv-t" style="font-weight:600">LOYAL</text><text x="846" y="96" class="sv-n">6+ delivered</text>
+        <path d="M142 83 L176 83 M302 83 L336 83 M462 83 L496 83 M622 83 L656 83 M782 83 L816 83" stroke="#8C95A4" stroke-width="1.4" marker-end="url(#ar3)"/>
+
+        <rect x="500" y="170" width="140" height="46" rx="2" fill="#FCF8EE" stroke="#C08A1E"/><text x="540" y="190" class="sv-t" style="font-weight:600">DORMANT</text><text x="512" y="206" class="sv-n">2× usage days idle</text>
+        <rect x="700" y="170" width="140" height="46" rx="2" fill="#FDF3F1" stroke="#B03A2C"/><text x="742" y="190" class="sv-t" style="font-weight:600">CHURNED</text><text x="712" y="206" class="sv-n">3 win-backs failed</text>
+        <path d="M560 110 L560 166" stroke="#8C95A4" stroke-width="1.4" marker-end="url(#ar3)"/>
+        <path d="M642 193 L696 193" stroke="#8C95A4" stroke-width="1.4" marker-end="url(#ar3)"/>
+        <path d="M500 193 L300 193 L300 110" stroke="#1C6B49" stroke-width="1.4" marker-end="url(#ar3)" class="dash"/>
+        <text x="330" y="188" class="sv-n" style="fill:#1C6B49">win-back succeeds</text>
+
+        <rect x="20" y="170" width="440" height="46" rx="2" fill="#14161F"/>
+        <text x="36" y="190" class="sv-w" style="font-family:'IBM Plex Sans';font-size:11.5px">Repeat-purchase due = delivered date + SKU usage days − 5</text>
+        <text x="36" y="206" style="font-family:'IBM Plex Mono';font-size:10px;fill:#7C879B">customer enters the owning rep's worklist on that morning, automatically</text>
+      </g>
+    </svg>
+  </div>
+
+  <h2 class="sec">Order lifecycle <span>every transition is an immutable event</span></h2>
+  <div class="flowwrap">
+    <svg viewBox="0 0 1120 210" role="img" aria-label="Order lifecycle state machine">
+      <defs><marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8C95A4"/></marker></defs>
+      <g>
+        <rect x="14" y="30" width="104" height="40" fill="#fff" stroke="#D4D9E0"/><text x="34" y="55" class="sv-t">PENDING</text>
+        <rect x="150" y="30" width="104" height="40" fill="#fff" stroke="#D4D9E0"/><text x="164" y="55" class="sv-t">CONFIRMED</text>
+        <rect x="286" y="30" width="104" height="40" fill="#fff" stroke="#D4D9E0"/><text x="298" y="55" class="sv-t">PROCESSING</text>
+        <rect x="422" y="30" width="104" height="40" fill="#fff" stroke="#D4D9E0"/><text x="436" y="55" class="sv-t">DISPATCHED</text>
+        <rect x="558" y="30" width="104" height="40" fill="#fff" stroke="#D4D9E0"/><text x="576" y="55" class="sv-t">IN TRANSIT</text>
+        <rect x="694" y="30" width="80" height="40" fill="#fff" stroke="#D4D9E0"/><text x="722" y="55" class="sv-t">OFD</text>
+        <rect x="806" y="30" width="120" height="40" fill="#F1F8F4" stroke="#1C6B49" stroke-width="2"/><text x="828" y="55" class="sv-t" style="font-weight:600">DELIVERED</text>
+        <rect x="958" y="30" width="148" height="40" fill="#14161F"/><text x="972" y="49" class="sv-w" style="font-family:'IBM Plex Sans';font-size:11px">Credit realises</text><text x="972" y="63" style="font-family:'IBM Plex Mono';font-size:9.5px;fill:#7C879B">ledger entry written</text>
+        <path d="M120 50 L146 50 M256 50 L282 50 M392 50 L418 50 M528 50 L554 50 M664 50 L690 50 M776 50 L802 50 M928 50 L954 50" stroke="#8C95A4" stroke-width="1.4" marker-end="url(#ar4)"/>
+
+        <rect x="422" y="120" width="104" height="40" fill="#FDF3F1" stroke="#B03A2C"/><text x="456" y="145" class="sv-t">RTO</text>
+        <rect x="558" y="120" width="120" height="40" fill="#FDF3F1" stroke="#B03A2C"/><text x="572" y="145" class="sv-t">FAILED / NDR</text>
+        <rect x="710" y="120" width="104" height="40" fill="#FDF3F1" stroke="#B03A2C"/><text x="738" y="145" class="sv-t">REFUSED</text>
+        <rect x="846" y="120" width="260" height="40" fill="#FCF8EE" stroke="#C08A1E"/><text x="862" y="139" class="sv-t" style="font-weight:600">Recovery lead + clawback</text><text x="862" y="153" class="sv-n">routed back to the owning rep automatically</text>
+        <path d="M474 74 L474 116 M618 74 L618 116 M740 74 L740 116" stroke="#B03A2C" stroke-width="1.3" marker-end="url(#ar4)" class="dash"/>
+        <path d="M816 140 L842 140" stroke="#8C95A4" stroke-width="1.4" marker-end="url(#ar4)"/>
+        <text x="14" y="190" class="sv-n">CANCELLED and NO_RESPONSE are reachable from PENDING or CONFIRMED · a delivered order that later returns writes a clawback, never an edit</text>
+      </g>
+    </svg>
+  </div>
+
+  <h2 class="sec">Attribution rules <span>your ₹500 / ₹1,500 example, generalised</span></h2>
+  <div class="card"><div class="tw"><table>
+    <thead><tr><th>Source</th><th>Company base</th><th>Employee credit</th><th>Worked example</th></tr></thead>
+    <tbody>
+      <tr><td>Shopify orders</td><td>Shopify value at import</td><td class="mono">final − base</td><td>₹500 order upsold to ₹2,000 → company <b>₹500</b>, rep <b>₹1,500</b></td></tr>
+      <tr><td>WA campaign with order</td><td>Campaign order value</td><td class="mono">final − base</td><td>₹700 order upsold to ₹1,800 → company <b>₹700</b>, rep <b>₹1,100</b></td></tr>
+      <tr><td>Meta ads leads</td><td class="mono">₹0</td><td class="mono">full value</td><td>Rep created the entire sale</td></tr>
+      <tr><td>Website WhatsApp</td><td class="mono">₹0</td><td class="mono">full value</td><td></td></tr>
+      <tr><td>Website call</td><td class="mono">₹0</td><td class="mono">full value</td><td></td></tr>
+      <tr><td>Add to cart</td><td class="mono">₹0</td><td class="mono">full value</td><td>A cart was never a committed order</td></tr>
+      <tr><td>Delivered / repeat</td><td class="mono">₹0</td><td class="mono">full value</td><td>Repeat sale is rep-generated</td></tr>
+      <tr><td>RTO recovery</td><td class="mono">₹0</td><td class="mono">full value (configurable %)</td><td>Recovering a dead order is real work</td></tr>
+      <tr><td>NC / refused recovery</td><td class="mono">₹0</td><td class="mono">full value (configurable %)</td><td></td></tr>
+      <tr><td>Split ownership</td><td>per source rule</td><td class="mono">split by configured %</td><td>Handles <span class="mono">Riya Chauhan / Shopify</span> and <span class="mono">Riya / Divya</span> correctly</td></tr>
+    </tbody>
+  </table></div></div>
+  <div class="note" style="margin-top:12px"><b>Base value is looked up, never typed.</b> It comes from the SKU master and the imported order value. That is the whole fix for the 16 of 52 Shopify rows currently crediting the full order amount to the rep.</div>
+
+  <h2 class="sec">Assignment rules <span>admin decides, system enforces the guardrails</span></h2>
+  <div class="card"><div class="card-b">
+    <div class="timeline">
+      <div class="tl-i"><div class="tl-t">RULE 1 · Leads wait in a pool</div><div class="tl-x">Nothing is assigned automatically. Committed leads land in the unassigned pool and stay there until an admin distributes them.</div></div>
+      <div class="tl-i"><div class="tl-t">RULE 2 · Filter, tick, assign</div><div class="tl-x">Filter by source, state, product interest or age. Tick a block, pick a rep, assign. Sixty leads move in three clicks with one log entry — not sixty rows of copy-paste.</div></div>
+      <div class="tl-i"><div class="tl-t">RULE 3 · Existing customers are flagged</div><div class="tl-x">If a lead already belongs to a rep, the system says so before you hand it elsewhere. You can override; the override is logged.</div></div>
+      <div class="tl-i"><div class="tl-t">RULE 4 · Overload is warned, not blocked</div><div class="tl-x">Assigning 60 more leads to a rep sitting on 120 open ones throws a warning. Your call, but you make it with the number in front of you.</div></div>
+      <div class="tl-i"><div class="tl-t">RULE 5 · Untouched leads come back</div><div class="tl-x">Assigned and not touched in 48 hours triggers an alert. At 72 hours the lead returns to the pool automatically, so a block never rots in one rep's queue the way 174 leads did in August.</div></div>
+      <div class="tl-i"><div class="tl-t">RULE 6 · Suggested split is advisory</div><div class="tl-x">The system shows what a balanced distribution would look like based on open workload and last month's yield. Accept it, edit it, or ignore it entirely — it never assigns on its own.</div></div>
+      <div class="tl-i"><div class="tl-t">RULE 7 · Every move is logged</div><div class="tl-x">Who assigned what, to whom, when, and why. Transfers and recalls too. There is no way to move a lead silently.</div></div>
+    </div>
+  </div></div>
+
+  <h2 class="sec">Performance score <span>measures reps · does not assign leads</span></h2>
+  <div class="note" style="margin-bottom:12px"><b>This score exists for reports and incentive, not for allocation.</b> Since you assign by hand, its job is to tell you who is actually performing and why — and to feed the assignment quality audit that makes your own distribution decisions sharper each week.</div>
+  <div class="grid g2">
+    <div class="card"><div class="tw"><table>
+      <thead><tr><th>Component</th><th class="r">Weight</th><th>What it measures</th></tr></thead>
+      <tbody>
+        <tr><td>Conversion rate</td><td class="r mono">25%</td><td>Delivered orders ÷ leads assigned</td></tr>
+        <tr><td>Value per lead</td><td class="r mono">25%</td><td>Realised value ÷ leads assigned</td></tr>
+        <tr><td>Delivery quality</td><td class="r mono">20%</td><td class="mono">1 − RTO%</td></tr>
+        <tr><td>Upsell index</td><td class="r mono">15%</td><td>Credited ÷ base on eligible orders</td></tr>
+        <tr><td>Activity discipline</td><td class="r mono">10%</td><td>Follow-up SLA, dial coverage, untouched rate</td></tr>
+        <tr><td>Data hygiene</td><td class="r mono">5%</td><td>Dispositions filled, no stale leads</td></tr>
+      </tbody>
+    </table></div></div>
+    <div>
+      <div class="note bad"><b>Delivery quality at 20% is the deliberate change.</b> In a COD business a rep booking ₹3L at 41% RTO destroys more margin than one booking ₹1.5L at 3%. The current scoreboard cannot see the difference — it treats a booked order and a delivered one as the same event.</div>
+      <div class="note" style="margin-top:12px"><b>Bayesian shrinkage, k = 30 leads.</b> <span class="mono">adjusted = (n × observed + 30 × team mean) ÷ (n + 30)</span>. A rep with twelve leads and one lucky order cannot top the table — which is exactly what the current Scoreboard allows.</div>
+      <div class="note ok" style="margin-top:12px"><b>Source-mix neutralisation.</b> Scores are computed within source cohorts and re-weighted, so a rep you loaded with delivered-data repeats is not compared naively against one you gave cold Meta leads. Without this, the score would mostly be measuring your assignment choices rather than their work.</div>
+    </div>
+  </div>
+</section>
+
+  </div>
+</div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ── nav ─────────────────────────────── */
+var crumbMap = {
+  'v-flow':['Architecture','System flow'],
+  'v-day':['Architecture','Day in the life'],
+  'v-admin':['Admin portal','Admin workspace'],
+  'v-emp':['Employee portal','BDE workspace'],
+  'v-mis':['Output','Reports &amp; MIS'],
+  'v-rules':['Output','Lifecycle &amp; rules']
+};
+function show(id){
+  document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('on', v.id===id);});
+  document.querySelectorAll('.railbtn').forEach(function(b){b.classList.toggle('on', b.dataset.view===id);});
+  var c = crumbMap[id]||['',''];
+  document.getElementById('crumb').innerHTML = c[0]+' / <b>'+c[1]+'</b>';
+  window.scrollTo({top:0,behavior:'instant'});
+}
+document.querySelectorAll('.railbtn').forEach(function(b){
+  b.addEventListener('click', function(){ show(b.dataset.view); });
+});
+
+/* ── tabs ────────────────────────────── */
+document.querySelectorAll('.tabs').forEach(function(group){
+  group.addEventListener('click', function(e){
+    var btn = e.target.closest('button'); if(!btn) return;
+    group.querySelectorAll('button').forEach(function(b){b.classList.toggle('on', b===btn);});
+    var scope = group.closest('.view');
+    scope.querySelectorAll('.pane').forEach(function(p){
+      p.classList.toggle('on', p.id === 'p-'+btn.dataset.p);
+    });
+  });
+});
+
+/* ── role switch ─────────────────────── */
+var rA=document.getElementById('rAdmin'), rE=document.getElementById('rEmp');
+function setRole(admin){
+  rA.classList.toggle('on',admin); rE.classList.toggle('on',!admin);
+  document.getElementById('avi').textContent = admin?'SN':'RC';
+  document.getElementById('whoName').textContent = admin?'Sunita Negi':'Riya Chauhan';
+  document.getElementById('whoRole').textContent = admin?'Admin · full access':'BDE · EMP-004 · own leads only';
+  show(admin?'v-admin':'v-emp');
+}
+rA.addEventListener('click',function(){setRole(true);});
+rE.addEventListener('click',function(){setRole(false);});
+
+/* ── upload drop boxes ───────────────── */
+var channels = [
+  ['Shopify orders','shopify_orders_20aug.csv',66,'done'],
+  ['Meta ads leads','meta_leads_20aug.csv',30,'done'],
+  ['Website WhatsApp','wa_web_20aug.xlsx',42,'done'],
+  ['Add to cart','abandoned_cart_20aug.csv',7,'done'],
+  ['Website call','call_leads_20aug.csv',3,'wait'],
+  ['WhatsApp campaign','aisensy_broadcast.xlsx',10,'done'],
+  ['Delivered customers','delivered_20aug.xlsx',125,'review'],
+  ['RTO report','rto_report_20aug.xlsx',24,'done'],
+  ['NC / refused','ndr_20aug.xlsx',11,'wait']
+];
+var dg = document.getElementById('dropgrid');
+if(dg){
+  dg.innerHTML = channels.map(function(c){
+    var st = c[3]==='done' ? '<span class="tag t-ok">Committed</span>'
+           : c[3]==='review' ? '<span class="tag t-warn">In review</span>'
+           : '<span class="tag t-mute">Awaiting file</span>';
+    var body = c[3]==='wait'
+      ? '<div style="border:1.5px dashed var(--line);border-radius:2px;padding:16px;text-align:center;color:var(--faint);font-size:12px">Drop XLSX or CSV here</div>'
+      : '<div style="font-size:12px"><div class="mono" style="color:var(--muted);word-break:break-all">'+c[1]+'</div>'
+        +'<div class="bar" style="margin-top:8px"><i class="'+(c[3]==='done'?'v':'')+'" style="width:100%"></i></div>'
+        +'<div class="mono" style="font-size:11px;color:var(--faint);margin-top:5px">'+c[2]+' rows read</div></div>';
+    return '<div class="card"><div class="card-h"><h4 style="font-size:13.5px">'+c[0]+'</h4><span class="tag">'+st+'</span></div><div class="card-b">'+body+'</div></div>';
+  }).join('');
+}
+
+/* ── pipeline sim ────────────────────── */
+var runPipe = document.getElementById('runPipe');
+if(runPipe){
+  runPipe.addEventListener('click', function(){
+    var steps = Array.prototype.slice.call(document.querySelectorAll('#pipe .pstep'));
+    var msg = document.getElementById('pipeMsg');
+    steps.forEach(function(s){ s.classList.remove('done','act'); s.querySelector('.pc').textContent=''; });
+    runPipe.disabled = true; msg.textContent = 'Running…';
+    var i = 0;
+    var t = setInterval(function(){
+      if(i>0){ steps[i-1].classList.remove('act'); steps[i-1].classList.add('done'); steps[i-1].querySelector('.pc').textContent = '✓ '+steps[i-1].dataset.c; }
+      if(i>=steps.length){
+        clearInterval(t); runPipe.disabled=false;
+        msg.innerHTML = '<b style="color:var(--vine)">486 committed · 26 to review · 18 minutes of admin time saved</b>';
+        return;
+      }
+      steps[i].classList.add('act'); i++;
+    }, 480);
+  });
+}
+
+/* ── unassigned pool + bulk assign ───── */
+var pool = [
+  ['Priyanshi Sharma','8076845536','Shopify orders','Mamo Firm Cream','Uttar Pradesh',3000,'09:18'],
+  ['Sarfaraj Ahamad','6391172210','Shopify orders','Mamo Plus Capsules','Uttar Pradesh',2500,'09:18'],
+  ['Kumkum Bora','8099146825','Shopify orders','Mamo Plus 2-in-1','Maharashtra',1102,'09:18'],
+  ['Saloni Kumari','7060411385','Shopify orders','B Reduce Cream','Uttar Pradesh',2500,'09:18'],
+  ['Himanshi Bisht','8449645312','Meta ads leads','Skinwise','Uttarakhand',1200,'09:18'],
+  ['Sahiba Khan','9286465807','Meta ads leads','Skinwise','Delhi',899,'09:18'],
+  ['Somya','9343565368','Meta ads leads','Breast Care','Karnataka',1449,'09:18'],
+  ['Monisha','8967236564','Meta ads leads','Breast Care','West Bengal',1200,'09:18'],
+  ['Mo Saif','8173996166','WhatsApp campaign','Slimming Care','Madhya Pradesh',1800,'09:18'],
+  ['Sujata Nayak','8917619174','WhatsApp campaign','Breast Care','Odisha',1500,'09:18'],
+  ['SK Muntaz','9848996231','Delivered / repeat','Skinwise Serum','Andhra Pradesh',2700,'08:40'],
+  ['Bhagyashree Dalvi','8698139813','Delivered / repeat','Detox Drink','Maharashtra',2500,'08:40'],
+  ['Aarti Nayaka','9512202022','Delivered / repeat','Mamo Firm Cream','Gujarat',2500,'08:40'],
+  ['Roslyn Reang','8974588944','Delivered / repeat','Mamo Firm Cream','Tripura',1651,'08:40'],
+  ['Preeta','7981694756','RTO recovery','Mamo Plus 2-in-1','Telangana',1500,'08:40'],
+  ['Chaitan Kujur','8967199581','RTO recovery','Mamo Plus 2-in-1','West Bengal',1001,'08:40']
+];
+var poolBody = document.getElementById('poolBody');
+var assignedToday = 0;
+function renderPool(){
+  poolBody.innerHTML = pool.map(function(r,i){
+    return '<tr><td><input type="checkbox" class="poolChk" data-i="'+i+'" style="width:auto"></td>'
+      +'<td><b>'+r[0]+'</b></td><td class="mono">'+r[1]+'</td><td>'+r[2]+'</td>'
+      +'<td>'+r[3]+'</td><td>'+r[4]+'</td><td class="r mono">₹'+r[5].toLocaleString('en-IN')+'</td>'
+      +'<td class="mono">'+r[6]+'</td></tr>';
+  }).join('');
+  bindChk();
+}
+function selectedCount(){ return document.querySelectorAll('.poolChk:checked').length; }
+function updateSel(){
+  var n = selectedCount();
+  document.getElementById('selCount').textContent = n + ' selected';
+  document.getElementById('selCount').className = n ? 'tag t-warn tag' : 'tag t-mute tag';
+}
+function bindChk(){
+  document.querySelectorAll('.poolChk').forEach(function(c){
+    c.addEventListener('change', updateSel);
+  });
+}
+if(poolBody){
+  renderPool();
+  document.getElementById('chkAll').addEventListener('change', function(){
+    var on = this.checked;
+    document.querySelectorAll('.poolChk').forEach(function(c){ c.checked = on; });
+    updateSel();
+  });
+  document.getElementById('selAll').addEventListener('click', function(){
+    document.querySelectorAll('.poolChk').forEach(function(c){ c.checked = true; });
+    document.getElementById('chkAll').checked = true; updateSel();
+  });
+  document.getElementById('selNone').addEventListener('click', function(){
+    document.querySelectorAll('.poolChk').forEach(function(c){ c.checked = false; });
+    document.getElementById('chkAll').checked = false; updateSel();
+  });
+  document.getElementById('selTop').addEventListener('click', function(){
+    document.querySelectorAll('.poolChk').forEach(function(c,i){ c.checked = i < 8; });
+    updateSel();
+  });
+  document.getElementById('doAssign').addEventListener('click', function(){
+    var n = selectedCount();
+    var who = document.getElementById('assignTo').value;
+    var msg = document.getElementById('assignMsg');
+    if(n === 0){ msg.innerHTML = '<b style="color:var(--clay)">Tick some leads first.</b>'; return; }
+    if(who.indexOf('pick') > -1){ msg.innerHTML = '<b style="color:var(--clay)">Choose an employee.</b>'; return; }
+    assignedToday += n;
+    document.getElementById('assignedToday').textContent = assignedToday;
+    var left = Math.max(486 - assignedToday, 0);
+    document.getElementById('poolCount').textContent = left;
+    msg.innerHTML = '<b style="color:var(--vine)">' + n + ' leads assigned to ' + who + '. Logged, and now visible in their portal.</b>';
+    document.querySelectorAll('.poolChk:checked').forEach(function(c){
+      var row = c.closest('tr'); row.style.opacity = '.35'; c.checked = false; c.disabled = true;
+    });
+    updateSel();
+  });
+  document.getElementById('applySplit').addEventListener('click', function(){
+    assignedToday = 466;
+    document.getElementById('assignedToday').textContent = '466';
+    document.getElementById('poolCount').textContent = '20';
+    document.getElementById('assignMsg').innerHTML = '<b style="color:var(--vine)">466 leads distributed across 7 reps in the suggested proportions. 20 held back — existing customers whose owner is on leave.</b>';
+  });
+}
+
+/* ── employee master ─────────────────── */
+var emps = [
+  ['Nikita','EMP-001','Active',300000,146231,3,78.2,150],
+  ['Divya','EMP-002','Active',400000,216785,4,74.6,150],
+  ['Riya Chauhan','EMP-004','Active',300000,119720,8,66.4,150],
+  ['Akruti','EMP-005','Active',150000,63011,2,61.9,150],
+  ['Priti','EMP-006','Active',120000,27884,0,52.3,120],
+  ['Priyanka','EMP-008','Active',100000,11976,0,41.0,100],
+  ['Kajal','EMP-009','Active',120000,10323,41,33.8,100],
+  ['Megha','EMP-003','On leave',0,4000,0,null,0],
+  ['Shweta','EMP-007','Active',0,7961,0,null,80],
+  ['Puja Singh','EMP-010','Exited',0,1500,0,null,0],
+  ['Mala','EMP-011','Exited',0,0,0,null,0]
+];
+var eb = document.getElementById('empBody');
+if(eb){
+  eb.innerHTML = emps.map(function(e){
+    var pct = e[3] ? Math.round(e[4]/e[3]*100) : 0;
+    var stTag = e[2]==='Active' ? '<span class="tag t-ok">Active</span>'
+             : e[2]==='On leave' ? '<span class="tag t-warn">On leave</span>'
+             : '<span class="tag t-mute">Exited</span>';
+    var rtoCol = e[5]>20?'var(--clay)':e[5]>5?'var(--brass-d)':'var(--vine)';
+    return '<tr><td><b>'+e[0]+'</b></td><td class="mono">'+e[1]+'</td><td>'+stTag+'</td>'
+      +'<td class="r mono">'+(e[3]?'₹'+e[3].toLocaleString('en-IN'):'—')+'</td>'
+      +'<td class="r mono">₹'+e[4].toLocaleString('en-IN')+'</td>'
+      +'<td><div class="bar"><i class="'+(pct>50?'v':'')+'" style="width:'+Math.min(pct,100)+'%"></i></div><span class="mono" style="font-size:11px;color:var(--muted)">'+(e[3]?pct+'%':'—')+'</span></td>'
+      +'<td class="r mono" style="color:'+rtoCol+'">'+e[5]+'%</td>'
+      +'<td class="r mono">'+(e[6]!==null?e[6].toFixed(1):'—')+'</td>'
+      +'<td class="r mono">'+(e[7]||'—')+'</td>'
+      +'<td class="r"><button class="btn ghost sm">Edit</button></td></tr>';
+  }).join('');
+}
+
+/* ── scoreboard ──────────────────────── */
+var sb = document.getElementById('scoreBody');
+var scores = [
+  ['Nikita',300000,370375,146231,68,3,18.4,1.62,78.2],
+  ['Divya',400000,290638,216785,84,4,16.1,1.44,74.6],
+  ['Riya Chauhan',300000,174357,119720,58,8,12.9,2.34,66.4],
+  ['Akruti',150000,84120,63011,32,2,14.2,1.71,61.9],
+  ['Priti',120000,38400,27884,16,0,10.8,1.28,52.3],
+  ['Priyanka',100000,16200,11976,6,0,7.1,1.09,41.0],
+  ['Kajal',120000,17490,10323,5,41,5.4,1.02,33.8]
+];
+if(sb){
+  sb.innerHTML = scores.map(function(s,i){
+    var pct = Math.round(s[3]/s[1]*100);
+    var rtoCol = s[5]>20?'var(--clay)':s[5]>5?'var(--brass-d)':'var(--vine)';
+    return '<tr><td class="mono">'+(i+1)+'</td><td><b>'+s[0]+'</b></td>'
+      +'<td class="r mono">₹'+(s[1]/1000).toFixed(0)+'k</td>'
+      +'<td class="r mono">₹'+(s[2]/1000).toFixed(1)+'k</td>'
+      +'<td class="r mono"><b>₹'+(s[3]/1000).toFixed(1)+'k</b></td>'
+      +'<td><div class="bar"><i class="'+(pct>50?'v':'')+'" style="width:'+Math.min(pct,100)+'%"></i></div><span class="mono" style="font-size:11px;color:var(--muted)">'+pct+'%</span></td>'
+      +'<td class="r mono">'+s[4]+'</td>'
+      +'<td class="r mono" style="color:'+rtoCol+'">'+s[5]+'%</td>'
+      +'<td class="r mono">'+s[6]+'%</td>'
+      +'<td class="r mono">'+s[7].toFixed(2)+'×</td>'
+      +'<td class="r mono"><b>'+s[8].toFixed(1)+'</b></td></tr>';
+  }).join('');
+}
+
+/* ── funnel ──────────────────────────── */
+var fb = document.getElementById('funnelBody');
+var funnel = [
+  ['Delivered / repeat',187,94,50.3,21,11.2,19,52400,280,'ok','Best value per lead'],
+  ['Shopify orders',66,58,87.9,48,72.7,44,96800,1467,'ok','Highest conversion'],
+  ['WA campaign',164,61,37.2,32,19.5,29,58900,359,'ok','Strong'],
+  ['Meta ads leads',30,11,36.7,1,3.3,1,1200,40,'warn','Expensive per order'],
+  ['Add to cart',18,9,50.0,3,16.7,3,4900,272,'ok','Small but efficient'],
+  ['Website call',3,3,100.0,1,33.3,1,2200,733,'ok','Tiny volume, high intent'],
+  ['RTO recovery',24,14,58.3,2,8.3,2,3400,142,'warn','Worth the attempt'],
+  ['NC / refused',11,6,54.5,1,9.1,1,1450,132,'warn','Marginal'],
+  ['Other user block',174,32,18.4,0,0.0,0,0,0,'bad','Expired unworked']
+];
+if(fb){
+  fb.innerHTML = funnel.map(function(f){
+    var t = f[9]==='ok'?'t-ok':f[9]==='warn'?'t-warn':'t-bad';
+    return '<tr><td><b>'+f[0]+'</b></td><td class="r mono">'+f[1]+'</td><td class="r mono">'+f[2]+'</td>'
+      +'<td class="r mono">'+f[3].toFixed(1)+'%</td><td class="r mono">'+f[4]+'</td>'
+      +'<td class="r mono">'+f[5].toFixed(1)+'%</td><td class="r mono">'+f[6]+'</td>'
+      +'<td class="r mono">₹'+f[7].toLocaleString('en-IN')+'</td>'
+      +'<td class="r mono"><b>₹'+f[8]+'</b></td>'
+      +'<td><span class="tag '+t+'">'+f[10]+'</span></td></tr>';
+  }).join('');
+}
+
+/* ── dial + copy ─────────────────────── */
+var copyBtn = document.getElementById('copyBtn');
+if(copyBtn){
+  copyBtn.addEventListener('click', function(){
+    var n = document.getElementById('phoneVal').textContent;
+    if(navigator.clipboard) navigator.clipboard.writeText(n);
+    copyBtn.textContent = 'Copied · logged';
+    setTimeout(function(){ copyBtn.textContent='Copy'; }, 1800);
+  });
+  document.getElementById('callBtn').addEventListener('click', function(){
+    var b = this;
+    b.textContent = 'Dial logged 14:22';
+    b.classList.remove('brass');
+    b.disabled = true;
+  });
+}
+
+/* ── disposition guard ───────────────── */
+var saveD = document.getElementById('saveDispo');
+if(saveD){
+  saveD.addEventListener('click', function(){
+    var d = document.getElementById('dispo');
+    var m = document.getElementById('dispoMsg');
+    if(d.selectedIndex === 0){
+      m.innerHTML = '<b style="color:var(--clay)">Pick an outcome before saving.</b>';
+      d.focus();
+    } else {
+      m.innerHTML = '<b style="color:var(--vine)">Saved. Activity logged, follow-up scheduled 23 Aug.</b>';
+    }
+  });
+}
+
+/* ── order credit calc ───────────────── */
+function calcOrder(){
+  var val = parseFloat(document.getElementById('ordVal').value) || 0;
+  var pre = parseFloat(document.getElementById('prepaid').value) || 0;
+  var base = 899;
+  var credit = Math.max(val - base, 0);
+  document.getElementById('cod').value = Math.max(val - pre, 0);
+  document.getElementById('oV').textContent = '₹' + val.toLocaleString('en-IN');
+  document.getElementById('oB').textContent = '₹' + base.toLocaleString('en-IN');
+  document.getElementById('oC').textContent = '₹' + credit.toLocaleString('en-IN');
+  var bp = val>0 ? Math.round(base/val*100) : 0;
+  document.getElementById('rbB').style.width = Math.min(bp,100)+'%';
+  document.getElementById('rbU').style.width = Math.max(100-bp,0)+'%';
+}
+['ordVal','prepaid'].forEach(function(id){
+  var el = document.getElementById(id);
+  if(el) el.addEventListener('input', calcOrder);
+});
+if(document.getElementById('ordVal')) calcOrder();
+
+})();
+</script>
+</body>
+</html>

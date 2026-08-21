@@ -1,0 +1,8 @@
+# Ingestion hashes raw file bytes (SHA-256, docs/06 stage 1).
+# CRLF rewriting would change fixture hashes between Windows and Linux CI
+# and make duplicate-file detection platform-dependent. Keep LF everywhere.
+* text=auto eol=lf
+*.csv  text eol=lf
+*.sql  text eol=lf
+*.png  binary
+*.xlsx binary

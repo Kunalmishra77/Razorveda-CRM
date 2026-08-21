@@ -1,0 +1,14 @@
+emp_code,full_name,email,role,status,monthly_target,wip_cap,shift_start,shift_end,joined_on
+OWN-001,Owner,owner@razorveda.local,OWNER,ACTIVE,0,0,00:00,23:59,2024-01-01
+ADM-001,Sunita,sunita@razorveda.local,ADMIN,ACTIVE,0,0,09:00,19:00,2024-06-01
+ADM-002,Sonam,sonam@razorveda.local,ADMIN,ACTIVE,0,0,09:00,19:00,2024-06-01
+ADM-003,Sonia,sonia@razorveda.local,ADMIN,ACTIVE,0,0,09:00,19:00,2024-06-01
+EMP-001,Nikita,nikita@razorveda.local,EMPLOYEE,ACTIVE,300000,150,10:00,20:00,2025-01-15
+EMP-002,Divya,divya@razorveda.local,EMPLOYEE,ACTIVE,400000,150,10:00,20:00,2024-11-01
+EMP-003,Megha,megha@razorveda.local,EMPLOYEE,ON_LEAVE,0,0,10:00,20:00,2025-06-01
+EMP-004,Riya Chauhan,riya@razorveda.local,EMPLOYEE,ACTIVE,300000,150,10:00,20:00,2025-03-01
+EMP-005,Akruti,akruti@razorveda.local,EMPLOYEE,ACTIVE,150000,150,10:00,20:00,2025-04-01
+EMP-006,Priti,priti@razorveda.local,EMPLOYEE,ACTIVE,120000,120,10:00,20:00,2025-05-01
+EMP-007,Shweta,shweta@razorveda.local,EMPLOYEE,ACTIVE,0,80,10:00,20:00,2026-07-01
+EMP-008,Priyanka,priyanka@razorveda.local,EMPLOYEE,ACTIVE,100000,100,10:00,20:00,2026-06-01
+EMP-009,Kajal,kajal@razorveda.local,EMPLOYEE,ACTIVE,120000,100,10:00,20:00,2026-06-01

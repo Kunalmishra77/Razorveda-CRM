@@ -1,0 +1,20 @@
+code,label,category,is_terminal,requires_followup_date,counts_as_connect,sort_order
+ORDER_DONE,Order done,POSITIVE,true,false,true,1
+FOLLOW_UP,Follow up,POSITIVE,false,true,true,2
+CALL_BACK,Call back,POSITIVE,false,true,true,3
+INTERESTED,Interested,POSITIVE,false,true,true,4
+HAS_PRODUCT,Has product already,POSITIVE,false,true,true,5
+THINKING,Thinking / will decide,NEGATIVE,false,true,true,6
+PRICE_ISSUE,Price issue,NEGATIVE,false,true,true,7
+NOT_INTERESTED,Not interested,NEGATIVE,true,false,true,8
+REFUSED,Refused order,NEGATIVE,true,false,true,9
+RINGING,Ringing / no answer,NOT_CONNECTED,false,false,false,10
+BUSY,Busy / call cut,NOT_CONNECTED,false,false,false,11
+NOT_CONNECTED,Not connected,NOT_CONNECTED,false,false,false,12
+SWITCHED_OFF,Switched off,NOT_CONNECTED,false,false,false,13
+WRONG_NUMBER,Wrong number,CLOSED,true,false,true,14
+UNDER_AGE,Under age,CLOSED,true,false,true,15
+LANGUAGE_ISSUE,Language issue,CLOSED,false,false,true,16
+FAKE_LEAD,Fake lead,CLOSED,true,false,false,17
+DNC,Do not call,CLOSED,true,false,true,18
+OTHER,Other / unclassified,NOT_CONNECTED,false,false,false,99
