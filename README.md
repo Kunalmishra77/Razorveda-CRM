@@ -58,8 +58,8 @@ REFUSING to run "seed".
   This database has no _local_dev_marker row, so it is not a known local-dev database.
 ```
 
-That is working as designed (**D-40**). Only `npm run db:migrate -- --fresh` creates the marker.
-Run that first.
+That is working as designed (**D-40**). `npm run db:migrate` writes the marker when it builds a
+database from empty, and `--fresh` writes it after dropping. Run migrate first.
 
 The reason is worth knowing. The production database is reachable over Tailscale at
 `127.0.0.1:55432` — **loopback**, so a host check cannot tell it apart from your local Postgres.
@@ -92,15 +92,20 @@ RESET ROLE;
 
 | Command | What it does |
 |---|---|
-| `npm run infra:up` / `infra:down` | Start / stop Postgres, Redis, MinIO |
-| `npm run infra:reset` | Destroy volumes and start clean |
-| `npm run db:migrate` | Apply schema + RLS policies |
-| `npm run db:migrate -- --fresh` | Drop `public` first. Writes `_local_dev_marker`. |
-| `npm run db:seed` | Idempotent. Run it twice; counts do not change. |
+| `npm run pg:start` / `pg:stop` | Start / stop local PostgreSQL 16 (no Docker) |
+| `npm run pg:destroy` | Wipe the cluster and start over |
+| `npm run db:migrate` | Apply schema + RLS policies. Marks a database it creates from empty. |
+| `npm run db:migrate -- --fresh` | Drop `public` first. Refuses on an unmarked, non-empty database. |
+| `npm run db:seed` | Master data. Idempotent — run it twice; counts do not change. |
 | `npm run db:seed -- --year 2027 --non-working 0,6 --holidays 2027-10-20` | Calendar for another year or weekend shape |
-| `npm test` | All workspaces |
+| `npm run db:seed:dev` | Cross-rep fixture data. Local only, never production. |
+| `npm test` | Unit tests, all workspaces |
+| `npm run test:rls` | The 8 isolation tests. Needs the database; **fails rather than skips** without one. |
 | `npm run dev` | api + web + worker |
 | `npm run typecheck` | All six workspaces |
+
+Redis (worker queues) and MinIO (uploads) are still Docker services in
+`docker-compose.yml` and are not needed until Phase 2.
 
 ### Seeded accounts
 
