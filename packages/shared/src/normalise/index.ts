@@ -66,6 +66,31 @@ const NON_LATIN_SCRIPT = /[ऀ-ॿ؀-ۿঀ-৿]/;
  * Repair, don't discard. These are real customer names, and dropping them would
  * quietly lose Hindi-speaking customers from the database.
  */
+/**
+ * Reverse of the CP1252 0x80-0x9F block.
+ *
+ * This is the part that matters, and it is not obvious. Mojibake produced on
+ * Windows — which is all of it here — is UTF-8 read as **CP1252**, not Latin-1.
+ * The two agree everywhere except 0x80-0x9F, where CP1252 has printable
+ * characters and Latin-1 has controls.
+ *
+ * `मोहन` contains the byte 0x8B, which renders as U+2039. Recovering bytes with
+ * `charCodeAt(0) & 0xff` turns U+2039 into 0x39, the digit "9", which corrupts
+ * the UTF-8 sequence so the decode throws and the name is returned unrepaired.
+ * Found by the fixture test; a Latin-1 assumption silently fails on exactly the
+ * names we most need to keep.
+ */
+const CP1252_HIGH: Readonly<Record<number, number>> = {
+  0x20ac: 0x80, 0x201a: 0x82, 0x0192: 0x83, 0x201e: 0x84, 0x2026: 0x85,
+  0x2020: 0x86, 0x2021: 0x87, 0x02c6: 0x88, 0x2030: 0x89, 0x0160: 0x8a,
+  0x2039: 0x8b, 0x0152: 0x8c, 0x017d: 0x8e, 0x2018: 0x91, 0x2019: 0x92,
+  0x201c: 0x93, 0x201d: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97,
+  0x02dc: 0x98, 0x2122: 0x99, 0x0161: 0x9a, 0x203a: 0x9b, 0x0153: 0x9c,
+  0x017e: 0x9e, 0x0178: 0x9f,
+};
+
+const toByte = (codePoint: number): number => CP1252_HIGH[codePoint] ?? (codePoint & 0xff);
+
 export function repairEncoding(raw: string | null | undefined): string {
   if (!raw) return '';
   const s = String(raw);
@@ -73,7 +98,7 @@ export function repairEncoding(raw: string | null | undefined): string {
   if (!MOJIBAKE_BYTES.test(s)) return s;
 
   try {
-    const bytes = Uint8Array.from([...s].map((ch) => ch.charCodeAt(0) & 0xff));
+    const bytes = Uint8Array.from([...s].map((ch) => toByte(ch.charCodeAt(0))));
     const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
     // Only accept the repair if it produced non-Latin script. Otherwise we would
     // "fix" a legitimately accented Latin name into nonsense.
