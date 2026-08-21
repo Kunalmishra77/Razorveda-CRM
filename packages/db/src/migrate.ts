@@ -69,6 +69,19 @@ async function main(): Promise<void> {
       }
     }
 
+    // The API connects as a role that owns nothing (D-21). Created here so a
+    // local stack is correct by default rather than by remembering a manual step.
+    const appPassword = process.env['APP_DB_PASSWORD'] ?? 'localdev';
+    await client.query(`DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'razorveda_app') THEN
+          CREATE ROLE razorveda_app LOGIN PASSWORD ${'$'}pw${'$'}${appPassword}${'$'}pw${'$'};
+        END IF;
+      END $$;`);
+    await client.query('GRANT app_role TO razorveda_app');
+    await client.query('GRANT USAGE ON SCHEMA public TO razorveda_app');
+    console.log('   app login role razorveda_app -> member of app_role, owns nothing');
+
     console.log('migrate: ok');
   } finally {
     await client.end();
