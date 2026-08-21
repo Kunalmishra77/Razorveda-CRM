@@ -10,6 +10,8 @@ export * from './primitives.js';
 export * from './money.js';
 export * from './selection.js';
 export * from './normalise/index.js';
+export * from './normalise/type-contracts.js';
+export * from './normalise/column-shift.js';
 export * from './crypto-params.js';
 export * from './forecast-params.js';
 

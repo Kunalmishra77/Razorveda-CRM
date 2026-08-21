@@ -70,7 +70,43 @@ Batch-level — **the column-shift detector**:
 > If more than 20% of the non-null values in any mapped column fail that column's type check,
 > mark the whole batch `SHIFTED` and stop before staging. Show the admin which column and a sample.
 
+The batch, not the row. A shift is a property of the file, and importing the 80% that happened to
+pass would scatter corruption through the customer master where it is far more expensive to find.
+
 This is what would have caught finding F3 in April instead of never.
+
+#### 5.1 Type contracts per target field (defect B10, decision O-12)
+
+**The detector is only as deep as these contracts.** Without them it watches one column:
+`Order Status` is an enum, so a customer name fails it loudly — but a PIN code dropped into a
+free-text `Client Category` passes everything, and the shift goes unnoticed. That is precisely how
+F3 survived for months.
+
+| Contract | Rule | Applied to |
+|---|---|---|
+| `PHONE` | Passes `normalisePhone` — 10 digits starting 6-9 after prefix stripping | `primary_phone`, alt numbers |
+| `PINCODE` | 6 digits, first digit **1-8**. Indian PINs never start 0 or 9. | `ship_pincode`, `customer.pincode` |
+| `AWB` | Numeric, length **9-16** | `awb_number` |
+| `ENUM` | Value present in the closed set, case-insensitive | `current_status`, `payment_mode`, disposition |
+| `DATE` | Parses under the source's configured locale, and is not in the future | `order_date`, `delivered_date`, `rto_date` |
+| `MONEY` | Decimal, at most 2dp, within optional bounds | `final_value`, `prepaid_amount`, `cod_amount` |
+| `INTEGER` | Whole number within optional bounds | `quantity` |
+| `FREE_TEXT` | **Cannot fail a type check.** Heuristic instead — see below. | names, addresses, categories, remarks |
+
+**The free-text heuristic.** A free-text column is invisible to the ordinary check, so ask a
+different question: *does this column suddenly look structured?* If more than **60%** of its
+non-empty values parse as a PIN code, an AWB, a phone number or a bare number, flag it.
+`Client Category` holding `247232` and `440023` is not a category — it is a PIN code column that
+slid one place left.
+
+The 60% threshold is deliberately looser than the 20% type threshold. A real category column
+occasionally holds `2 Pack` or a size, and crying shift on a legitimate file costs an admin their
+morning — an admin who learns to click through the warning has lost the whole control. The typed
+and enum columns are the primary signal; the heuristic is the backstop for columns that would
+otherwise be blind.
+
+**Empty cells are never failures.** A sparse column is a completeness question, not a type
+question; counting blanks as failures would reject every file with an optional column.
 
 ### 6. Exception review
 - Admin sees **only** rows with status `WARNING`, `ERROR` or `DUPLICATE`. Clean rows are never
