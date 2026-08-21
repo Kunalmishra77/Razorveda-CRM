@@ -91,21 +91,47 @@ const CP1252_HIGH: Readonly<Record<number, number>> = {
 
 const toByte = (codePoint: number): number => CP1252_HIGH[codePoint] ?? (codePoint & 0xff);
 
-export function repairEncoding(raw: string | null | undefined): string {
-  if (!raw) return '';
+export interface EncodingRepair {
+  readonly value: string;
+  readonly changed: boolean;
+  /**
+   * True when the repair could not be complete.
+   *
+   * CP1252 leaves five bytes undefined — 0x81, 0x8D, 0x8F, 0x90, 0x9D — so a
+   * UTF-8 sequence containing any of them was DESTROYED at the moment it was
+   * mis-decoded, before it ever reached us. It cannot be recovered by anyone.
+   *
+   * The fixture proves it: `शर्मा` needs the virama byte 0x8D, and the stored
+   * text runs E0 A5 straight into E0. That character is gone. The rest of the
+   * name repairs cleanly, which is worth having — a recognisable name with one
+   * missing mark beats an unreadable one — but the row must be FLAGGED rather
+   * than presented as a clean repair.
+   */
+  readonly lossy: boolean;
+}
+
+const REPLACEMENT = '�';
+
+/** Full result. `repairEncoding` is the convenience wrapper over it. */
+export function repairEncodingDetailed(raw: string | null | undefined): EncodingRepair {
+  if (!raw) return { value: '', changed: false, lossy: false };
   const s = String(raw);
 
-  if (!MOJIBAKE_BYTES.test(s)) return s;
+  if (!MOJIBAKE_BYTES.test(s)) return { value: s, changed: false, lossy: false };
 
-  try {
-    const bytes = Uint8Array.from([...s].map((ch) => toByte(ch.charCodeAt(0))));
-    const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    // Only accept the repair if it produced non-Latin script. Otherwise we would
-    // "fix" a legitimately accented Latin name into nonsense.
-    return NON_LATIN_SCRIPT.test(decoded) ? decoded : s;
-  } catch {
-    return s; // not valid UTF-8 underneath — leave it alone
-  }
+  const bytes = Uint8Array.from([...s].map((ch) => toByte(ch.charCodeAt(0))));
+  // Non-fatal on purpose: a partially recoverable name is still worth recovering.
+  const decoded = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+
+  // Only accept the repair if it produced non-Latin script. Otherwise we would
+  // "fix" a legitimately accented Latin name into nonsense.
+  if (!NON_LATIN_SCRIPT.test(decoded)) return { value: s, changed: false, lossy: false };
+
+  return { value: decoded, changed: true, lossy: decoded.includes(REPLACEMENT) };
+}
+
+export function repairEncoding(raw: string | null | undefined): string {
+  return repairEncodingDetailed(raw).value;
 }
 
 // --- name ------------------------------------------------------------------

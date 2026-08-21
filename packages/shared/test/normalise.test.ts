@@ -8,6 +8,7 @@ import {
   normalisePhone,
   parsePayment,
   repairEncoding,
+  repairEncodingDetailed,
 } from '../src/normalise/index.js';
 
 /**
@@ -101,9 +102,31 @@ describe('normalisePhone — F2: 10.9% of rows are un-keyable', () => {
 
 // ─── repairEncoding ─────────────────────────────────────────────────────────
 describe('repairEncoding — mojibake Devanagari', () => {
-  it('repairs UTF-8 read as Latin-1', () => {
+  it('recovers Devanagari from CP1252-mangled UTF-8', () => {
     // wa_campaign_sample.csv row 3 carries this exact string.
-    expect(repairEncoding('à¤®à¥‹à¤¹à¤¨ à¤¶à¤°à¥à¤®à¤¾')).toBe('मोहन शर्मा');
+    //
+    // My first expectation here was `मोहन शर्मा` and it was IMPOSSIBLE, which the
+    // bytes settled: the stored text runs E0 A5 straight into E0, so the virama
+    // byte 0x8D is missing. CP1252 leaves 0x8D undefined, so that byte was
+    // destroyed when the file was first mis-decoded — before it ever reached us.
+    // No implementation can bring it back.
+    const r = repairEncodingDetailed('à¤®à¥‹à¤¹à¤¨ à¤¶à¤°à¥à¤®à¤¾');
+    expect(r.changed).toBe(true);
+    expect(r.value).toMatch(/[ऀ-ॿ]/);
+    expect(r.value.startsWith('मोहन')).toBe(true);
+  });
+
+  it('FLAGS a repair it could not complete, rather than presenting it as clean', () => {
+    // A recognisable name with one missing mark beats an unreadable one — but the
+    // row has to be flagged, not quietly accepted.
+    expect(repairEncodingDetailed('à¤®à¥‹à¤¹à¤¨ à¤¶à¤°à¥à¤®à¤¾').lossy).toBe(true);
+  });
+
+  it('does not flag a clean repair as lossy', () => {
+    // "मोहन" alone has no byte in the CP1252 dead zone, so it recovers exactly.
+    const clean = repairEncodingDetailed('à¤®à¥‹à¤¹à¤¨');
+    expect(clean.value).toBe('मोहन');
+    expect(clean.lossy).toBe(false);
   });
 
   it('leaves clean Devanagari untouched', () => {
