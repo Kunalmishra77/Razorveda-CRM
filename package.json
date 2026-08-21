@@ -14,15 +14,19 @@
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
     "infra:reset": "docker compose down -v && docker compose up -d",
-    "db:migrate": "npm run migrate -w @razorveda/db",
-    "db:seed": "npm run seed -w @razorveda/db",
+    "db:migrate": "npm run migrate -w @razorveda/db --",
+    "db:seed": "npm run seed -w @razorveda/db --",
     "db:verify": "npm run verify -w @razorveda/db",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "tsc -b --pretty",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write .",
     "dev": "concurrently -n api,web,worker -c cyan,magenta,yellow \"npm run dev -w @razorveda/api\" \"npm run dev -w @razorveda/web\" \"npm run dev -w @razorveda/worker\"",
-    "test:rls": "npm run test:rls -w @razorveda/api"
+    "test:rls": "npm run test:rls -w @razorveda/api",
+    "pg:start": "npm run pg:start -w @razorveda/db",
+    "pg:stop": "npm run pg:stop -w @razorveda/db",
+    "pg:destroy": "npm run pg:destroy -w @razorveda/db",
+    "db:seed:dev": "npm run seed:dev -w @razorveda/db --"
   },
   "devDependencies": {
     "@types/node": "^22.5.0",

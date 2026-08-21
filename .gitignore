@@ -11,3 +11,5 @@ coverage/
 *.tsbuildinfo
 uploads/
 tmp/
+
+.pgdata/

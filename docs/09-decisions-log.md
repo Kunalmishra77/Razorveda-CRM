@@ -209,3 +209,22 @@ documented, per CLAUDE.md section 4 ("Log decisions").
 | **D-76** | `assigned_to IS NULL` is hardcoded into the pool query and is not a caller-supplied filter. | 1 | The absence of an assignment IS the pool (docs/02). Allowing a caller to drop that clause would let a bulk assign silently steal leads another rep is already working. Transfers are a separate, explicit action with their own `assign_method`. |
 | **D-77** | The API loads the `disposition` rule from the master table and ignores any client claim about whether a follow-up is required. | 1 | Exit criterion 4 requires the API to reject, not only the UI to block. A closed vocabulary enforced in the browser is a free-text field with a nicer widget — which is what F4's 49 spellings look like after four months. |
 | **D-78** | `DATABASE_URL_APP` has **no fallback** to `DATABASE_URL`; the API refuses to start without it. | 1 | A fallback would be the single worst failure mode in this codebase: connecting as the migration user disables every RLS policy while leaving all eight isolation tests green, because those tests `SET ROLE` explicitly. Failing to boot is loud; silent bypass is not. |
+
+---
+
+# Decisions taken 2026-08-21 — sixth pass (Phase 1 verification)
+
+| ID | Decision | Tier | Rationale |
+|---|---|---|---|
+| **D-79** | **Local Postgres without Docker.** Real PostgreSQL **16.14** binaries via `@embedded-postgres/windows-x64`, run against a repo-local `.pgdata`. Supersedes the Docker half of D-17; Coolify still runs Docker in production. | 2 | The client's machine does not run Docker Desktop and will not — it slows the machine, which is a fair reason. These are real binaries, not an emulator and not `pg-mem`: RLS, FORCE RLS, roles, triggers and pgcrypto behave exactly as in production. The one thing in this system that fails silently must never be tested against a lookalike. Pinned to **16** to match Coolify rather than taking the latest 18, so dev and prod cannot drift. |
+| **D-80** | `db:seed:dev` is a **separate** script from `db:seed`, guarded by both the host check and the sentinel. | 1 | `db:seed` loads master data — things that are true about the business. Fixture customers and leads must never reach production, and mixing them into one command is how that happens. |
+
+## Defects found by running it — none of which review would have caught
+
+| # | Defect | Where |
+|---|---|---|
+| **R1** | `working_calendar.month_key GENERATED ALWAYS AS (to_char(calendar_date,'YYYY-MM'))` — **rejected by Postgres**: `to_char(date,text)` is STABLE, not IMMUTABLE, because it depends on `DateStyle`. Rebuilt from `extract()` + `lpad`, which are immutable. Would have failed identically on Coolify. | `db/schema.sql` |
+| **R2** | `npm run db:migrate -- --fresh` **silently dropped the flag**: npm consumed `--fresh` as its own option. Root scripts now end with `--` to forward arguments. The flag had never worked. | `package.json` |
+| **R3** | A plain `migrate` on an empty database left **no `_local_dev_marker`**, so every later `--fresh` refused forever. The guard was right; the bootstrap path was incomplete. Migrate now marks any database it created from empty. | `packages/db/src/migrate.ts` |
+| **R4** | `pg_ctl -w start` **never returns on Windows**, and `spawnSync` blocks on stdio the server holds open, and `pg_ctl` passes its **console** to the server so a `timeout` wrapper's Ctrl-C killed the database mid-`CREATE DATABASE` (exit `0xC000013A`). Now spawns `postgres.exe` directly, detached, with a real protocol handshake for readiness rather than trusting the pid file. | `packages/db/src/local-pg.ts` |
+| **R5** | An append-only check on an **empty table passes vacuously** — a `FOR EACH ROW` trigger cannot fire on zero rows, which briefly read as a failing check when it was an empty fixture. All six tables now carry a row before being tested; 12/12 mutations blocked. | transcript + `seed-dev-fixture.ts` |

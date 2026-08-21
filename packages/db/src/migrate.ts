@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { assertLocalTarget, requireDatabaseUrl } from './env.js';
-import { assertSafeToDropSchema, createLocalDevMarker } from './sentinel.js';
+import { assertSafeToDropSchema, createLocalDevMarker, hasLocalDevMarker, publicTableCount } from './sentinel.js';
 
 /**
  * Applies db/schema.sql then db/rls-policies.sql.
@@ -28,6 +28,12 @@ async function main(): Promise<void> {
   console.log(`-> ${target.user}@${target.host}:${target.port}/${target.database}`);
 
   try {
+    // Was this database empty before we touched it? If so, whatever we build here
+    // is ours, and it must end up marked — otherwise a plain `migrate` on an empty
+    // database leaves an unmarked schema and every later `--fresh` refuses forever.
+    // Found by running it: the guard was right, the bootstrap path was incomplete.
+    const wasEmpty = (await publicTableCount(client)) === 0;
+
     if (fresh) {
       // Second, independent check. The host check cannot see through a tunnel to
       // 127.0.0.1; this one can, because a production database has no marker (D-40).
@@ -67,6 +73,11 @@ async function main(): Promise<void> {
             'test would pass while proving nothing. Re-run migrate as the migration user.',
         );
       }
+    }
+
+    if ((wasEmpty || fresh) && !(await hasLocalDevMarker(client))) {
+      await createLocalDevMarker(client);
+      console.log('   wrote _local_dev_marker');
     }
 
     // The API connects as a role that owns nothing (D-21). Created here so a

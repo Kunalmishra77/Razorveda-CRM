@@ -11,19 +11,40 @@ salesperson's number.
 
 ## Set up in 15 minutes
 
-**Prerequisites:** Node 20+, Docker Desktop, and `psql` (optional, for the RLS proof).
+**Prerequisites:** Node 20+. **No Docker required.**
 
 ```bash
 git clone <repo> && cd razorveda-crm
-npm install                       # ~2 min, installs all workspaces
-cp .env.example .env              # defaults already point at the local stack
+npm install                       # ~2 min; includes real PostgreSQL 16 binaries
 
-npm run infra:up                  # postgres 16, redis 7, minio
-npm run db:migrate -- --fresh     # applies db/schema.sql then db/rls-policies.sql
+npm run pg:start                  # starts Postgres 16 on 127.0.0.1:5433 from .pgdata
+cp .env.example .env              # defaults already point at it
+npm run db:migrate                # schema.sql + rls-policies.sql
 npm run db:seed                   # masters, 13 users, 2026 working calendar
-npm test                          # 93 tests
+npm run db:seed:dev               # cross-rep fixture data (local only)
+
+npm test                          # 308 unit tests
+npm run test:rls                  # the 8 RLS isolation tests — needs the database
 npm run dev                       # api :3001, web :3000, worker
 ```
+
+`npm run pg:stop` when you are done; `npm run pg:destroy` wipes the cluster.
+
+### Why there is no Docker here
+
+Docker Desktop is not installed on the client's machine and will not be — it slows
+the machine down, which is a fair reason. So local Postgres comes from real
+PostgreSQL **16.14** binaries shipped as an npm package and run against a data
+directory inside the repo (`.pgdata`, gitignored).
+
+These are not an emulator and not `pg-mem`: RLS, `FORCE ROW LEVEL SECURITY`,
+roles, triggers and `pgcrypto` all behave exactly as they do in production. That
+matters more here than anywhere else — the one thing in this system that fails
+silently is the one thing that must never be tested against a lookalike. The
+version is pinned to 16 to match the Coolify target so dev and prod cannot drift.
+
+Coolify still runs Docker in production. This only changes how a developer gets a
+database on their own laptop.
 
 Then open <http://localhost:3000>, and <http://localhost:3001/metrics/registry> to see the
 certified metric layer.

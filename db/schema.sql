@@ -113,7 +113,14 @@ CREATE TABLE disposition_alias (           -- fixes F4: 49 spellings of ~12 outc
 CREATE TABLE working_calendar (
   calendar_date  date PRIMARY KEY,
   is_working_day boolean NOT NULL DEFAULT true,
-  month_key      text GENERATED ALWAYS AS (to_char(calendar_date,'YYYY-MM')) STORED
+  -- to_char(date, text) is STABLE, not IMMUTABLE: it depends on DateStyle, so
+  -- Postgres rejects it in a generated column ("generation expression is not
+  -- immutable"). extract() on a date IS immutable, so the format is built from
+  -- immutable parts instead. Same 'YYYY-MM' contract as attribution_ledger.period_key.
+  month_key      text GENERATED ALWAYS AS (
+                   lpad(extract(year  from calendar_date)::text, 4, '0') || '-' ||
+                   lpad(extract(month from calendar_date)::text, 2, '0')
+                 ) STORED
 );
 
 -- Seasonality multiplier used by the Forecast metric (docs/03 section 3).
