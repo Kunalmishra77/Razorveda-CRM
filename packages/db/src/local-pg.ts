@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { connect } from 'node:net';
+import pg from 'pg';
 import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -74,9 +75,8 @@ export function initialise(): void {
 }
 
 /**
- * `pg_ctl -w start` does not return on Windows — it holds the console handle open
- * and the caller hangs forever. Found by running it. Start without -w and poll
- * `pg_ctl status` instead, which is what -w was buying us anyway.
+ * Start the server and wait until it can answer a QUERY, not merely until a socket
+ * opens. See acceptsConnections() below for why that distinction cost a failure.
  */
 export async function start(timeoutMs = 30_000): Promise<void> {
   initialise();
@@ -113,14 +113,34 @@ export async function start(timeoutMs = 30_000): Promise<void> {
 }
 
 /**
- * A real protocol handshake, in-process.
+ * Can the server actually answer a QUERY?
  *
- * The pid file appears before the server accepts clients, so connecting one tick
- * early gives ECONNRESET. This opens a socket and sends an SSLRequest — the
- * cheapest message that proves a live postmaster — using node's own net module
- * rather than spawning a child to do it.
+ * The socket handshake is not enough, and this cost a real failure: the postmaster
+ * answers an SSLRequest while still starting up, so `pg:start` returned and the
+ * very next command died with 57P03 "the database system is starting up". After
+ * an unclean shutdown, recovery can take seconds.
+ *
+ * So readiness means a completed query, not an open socket. 57P03 and 57P02 are
+ * "not yet", not "broken" — keep waiting.
  */
-function acceptsConnections(): Promise<boolean> {
+async function acceptsConnections(): Promise<boolean> {
+  const client = new pg.Client({
+    connectionString: superuserUrl('postgres'),
+    connectionTimeoutMillis: 2000,
+  });
+  try {
+    await client.connect();
+    await client.query('SELECT 1');
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}
+
+/** Socket-level check, kept for the port probe in diagnostics. */
+export function portIsOpen(): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = connect({ host: '127.0.0.1', port: LOCAL_PG_PORT });
     const done = (result: boolean): void => {

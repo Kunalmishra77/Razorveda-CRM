@@ -265,3 +265,15 @@ documented, per CLAUDE.md section 4 ("Log decisions").
 | **D-92** | An **AI-mapped column always requires an admin to confirm**, whatever confidence it claims. `canAutoApply` returns true only when every column came from the dictionary. | 2 | docs/06 sets a 0.9 floor for auto-applying, but a saved template is permanent and reused every day thereafter. The cost of a wrong template is months of silently mis-mapped data; the cost of one confirmation click is a few seconds. |
 | **D-93** | The B8 deny-list is a **hard block**, re-applied to AI output. `Final amount` can never map to `final_value`. | 1 | The sheet's "Final amount" is the manually typed employee credit — the words are inverted. A mapper matching on "final" corrupts every historical order and quietly changes what every rep is paid. Confidence is no defence against being confidently wrong about which column is the money. |
 | **D-94** | Two columns claiming the same target field leaves **both unmapped**, rather than picking one. | 2 | `Phone no` and `Number` in one file means somebody merged two exports. Choosing silently would drop half the numbers, and the file genuinely needs a human to look at it. |
+
+| ID | Decision | Tier | Rationale |
+|---|---|---|---|
+| **D-95** | Raw uploads go to a **content-addressed store with no update and no delete**. `LocalFileStorage` for dev, MinIO on Coolify, one interface. | 2 | ADR-005 says uploads are immutable and retained so any batch can be replayed after a rule fix. That is only true if overwriting is *impossible* rather than discouraged, so the operations do not exist. The path IS the SHA-256 already computed for the duplicate check, which gives a second independent duplicate signal — the same two-cheap-guards pattern as D-40. MinIO is a Docker service, so dev uses the filesystem for the same reason Postgres runs from npm binaries (D-79). |
+| **D-96** | Integrity is verified **on read and on repeat write**, not assumed. | 1 | A corrupted archive must surface now, not during a replay months later when nobody remembers what the batch contained. |
+| **D-97** | Upload **hashes and refuses duplicates BEFORE storing anything**. | 1 | Storing then checking would leave an orphan file behind every re-upload, and the entire point of a duplicate refusal is that nothing happens. |
+
+## Defects found by running it (continued)
+
+| # | Defect | Where |
+|---|---|---|
+| **R8** | `pg:start` returned as soon as the socket answered an SSLRequest, but the postmaster answers that **while still starting up** — so the next command died with `57P03 the database system is starting up`. Readiness now means a completed `SELECT 1`, not an open socket. After an unclean shutdown, recovery takes seconds. | `packages/db/src/local-pg.ts` |
