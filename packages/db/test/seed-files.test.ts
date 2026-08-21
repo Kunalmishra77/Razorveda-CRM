@@ -139,3 +139,32 @@ describe('seed files — parsing the awkward columns', () => {
     expect(top?.['percent']).toBe('4.0');
   });
 });
+
+describe('seasonality index — the term stays, the value is neutralised (D-44)', () => {
+  const seasonality = read('seasonality_index.csv');
+
+  it('covers all twelve months exactly once', () => {
+    const months = seasonality.map((r) => Number(r['month_of_year'])).sort((a, b) => a - b);
+    expect(months).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  });
+
+  it('is 1.0 everywhere — it cannot be fitted on five months of history', () => {
+    // An index fitted on Apr-Aug would look principled while encoding noise.
+    // Neutralising the value is honest; dropping the term would hide the gap.
+    for (const r of seasonality) {
+      expect(Number(r['index_value'])).toBe(1);
+    }
+  });
+
+  it('is flagged provisional on every row', () => {
+    // No screen may call the forecast "seasonally adjusted" while this holds.
+    expect(seasonality.every((r) => r['is_provisional'] === 'true')).toBe(true);
+  });
+
+  it('says in the data itself that it is a placeholder', () => {
+    // Someone reading a query result must be able to tell without finding D-44.
+    for (const r of seasonality) {
+      expect(r['note']?.toLowerCase()).toContain('placeholder');
+    }
+  });
+});

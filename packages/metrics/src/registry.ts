@@ -265,10 +265,13 @@ export const METRICS: readonly MetricDef[] = [
     section: 3,
     kind: 'metric',
     grain: 'rep x period',
-    // Stage probabilities come from a SEEDED TABLE, never constants: Phase 3 fits
-    // them from history and that must not be a code change.
+    // stage_probability: the stage IS the disposition - no parallel vocabulary
+    // (D-43). Measured from the ledger, with a source-rate fallback below 30 leads.
+    // seasonality_index: seeded 1.0 and provisional, because it cannot be fitted
+    // on five months of history (D-44). The term stays; the value is neutralised.
     formula:
-      '((open_pipeline x stage_probability) + (Per Day Avg Value x remaining_working_days)) x (1 - rep_rolling_90d_RTO)',
+      '((open_pipeline x stage_probability) + (Per Day Avg Value x remaining_working_days x seasonality_index)) x (1 - rep_rolling_90d_RTO)',
+    forecastWeightSource: 'MEASURED_DISPOSITION_RATE | SOURCE_EXPECTED_RATE',
     fixes: 'F16',
   },
   {

@@ -8,6 +8,7 @@
 export * from './enums.js';
 export * from './primitives.js';
 export * from './crypto-params.js';
+export * from './forecast-params.js';
 
 export * from './entities/auth.js';
 export * from './entities/masters.js';

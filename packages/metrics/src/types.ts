@@ -55,6 +55,12 @@ export interface MetricDef {
   /** Weight in the EES score. Section 5 only. */
   readonly weight?: number;
   /**
+   * Forecast only. Which stage_probability source is in play for a given output
+   * (docs/03 section 10.1, D-43). Recorded so a reader can tell a measured rate
+   * from a fallback without reading the query.
+   */
+  readonly forecastWeightSource?: string;
+  /**
    * Certified view SQL. Reports read these; they never compute their own
    * arithmetic (docs/04). Filled in as the views land in Phase 4.
    */

@@ -225,6 +225,23 @@ async function main(): Promise<void> {
       );
     }
 
+    // ── seasonality index ────────────────────────────────────────────────
+    // Seeded 1.0 for all twelve months, provisional. Cannot be fitted on five
+    // months of history; the term stays in Forecast and the value is neutralised
+    // (D-44). Revisit at 18+ months or when O-06 releases the 2025 archive.
+    for (const r of readSeed('seasonality_index.csv')) {
+      await client.query(
+        `INSERT INTO seasonality_index (month_of_year, index_value, is_provisional, note)
+         VALUES ($1,$2,$3,$4)
+         ON CONFLICT (month_of_year) DO UPDATE SET
+           index_value = EXCLUDED.index_value,
+           is_provisional = EXCLUDED.is_provisional,
+           note = EXCLUDED.note, updated_at = now()`,
+        [asNumber(r['month_of_year']), asNumber(r['index_value']),
+         asBool(r['is_provisional']), orNull(r['note'])],
+      );
+    }
+
     // ── working calendar ─────────────────────────────────────────────────
     const { year, nonWorking, holidays } = calendarOptions();
     const days = generateYear(year, { nonWorkingWeekdays: nonWorking, holidays });
@@ -242,6 +259,8 @@ async function main(): Promise<void> {
       `(non-working weekdays [${nonWorking.join(',')}], ${holidays.length} holidays)`);
     console.log('   NOTE: calendar is PROVISIONAL until O-08 festival closures are confirmed.');
     console.log('   NOTE: OWNER account is seeded LOCKED until O-07 nominates a person.');
+    console.log('   NOTE: seasonality_index is 1.0 for all months and PROVISIONAL (D-44) -');
+    console.log('         the forecast is NOT seasonally adjusted. Do not describe it as such.');
     console.log('seed: ok');
   } catch (e) {
     await client.query('ROLLBACK');

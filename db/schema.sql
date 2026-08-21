@@ -116,6 +116,21 @@ CREATE TABLE working_calendar (
   month_key      text GENERATED ALWAYS AS (to_char(calendar_date,'YYYY-MM')) STORED
 );
 
+-- Seasonality multiplier used by the Forecast metric (docs/03 section 3).
+-- Seeded 1.0 for all twelve months and flagged provisional: a seasonality index
+-- fitted on five months of history (Apr-Aug) would look principled while encoding
+-- noise. The TERM stays in the formula and the VALUE is neutralised, because a
+-- formula silently missing a term is far harder to find later than one carrying
+-- an obvious 1.0. Revisit at 18+ months, or sooner if O-06 releases the 2025
+-- archive. Admin-editable data, never a constant in code. (D-44)
+CREATE TABLE seasonality_index (
+  month_of_year  int PRIMARY KEY CHECK (month_of_year BETWEEN 1 AND 12),
+  index_value    numeric(6,4) NOT NULL DEFAULT 1.0000 CHECK (index_value > 0),
+  is_provisional boolean NOT NULL DEFAULT true,
+  note           text,
+  updated_at     timestamptz NOT NULL DEFAULT now()
+);
+
 -- ─── IDENTITY ─────────────────────────────────────────────────────────────
 CREATE TABLE customer (
   customer_id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),

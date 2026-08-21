@@ -66,7 +66,7 @@ Preserves the `Team Audit` model, auto-populated.
 | **Per Day Req Delivery** | `Value Balance ÷ remaining_working_days` from `working_calendar` | Unchanged — correct |
 | **Per Day Avg Value** | `Realised Value ÷ elapsed_working_days` from `working_calendar`. Run-rate to date. | Hand-typed divisor (F17) |
 | **Required Booking Value** | `Per Day Req Delivery ÷ (1 − rep_rolling_90d_RTO)` | Flat `× 1.15` (F11) |
-| **Forecast** | `((open_pipeline × stage_probability) + (Per Day Avg Value × remaining_working_days)) × (1 − rep_rolling_90d_RTO)`. Stage probabilities come from a seeded table, never constants. | Straight-line (F16), and legacy Approx Guess |
+| **Forecast** | `((open_pipeline × stage_probability) + (Per Day Avg Value × remaining_working_days × seasonality_index)) × (1 − rep_rolling_90d_RTO)`. See §10 for `stage_probability` and `seasonality_index`. | Straight-line (F16), and legacy Approx Guess |
 | **Approx Guess Rest of Month** | **LEGACY — reconciliation only, never displayed.** `Per Day Avg Value × remaining_working_days`. Straight-line: no pipeline weighting, no RTO adjustment. Recorded so Phase 2 can reproduce the client's figure in the variance report. Superseded by **Forecast**. | — |
 
 ## 4. Attribution metrics
@@ -256,3 +256,49 @@ The second costs ₹1 — but it is the same failure, and only the magnitude dif
 **Expect ±₹1 against the client's sheet.** The system multiplies exact quotients where a spreadsheet
 multiplies what the cell shows. Record this in the Phase 2 variance report once and do not chase it
 per-row.
+
+---
+
+## 10. Forecast inputs (decisions D-43, D-44 — resolve N9, N10)
+
+Two terms in **Forecast** need saying out loud, because both are places where an invented number
+would look more principled than an honest one.
+
+### 10.1 `stage_probability` — the stage IS the disposition (D-43, resolves N9)
+
+There is **no new pipeline-stage vocabulary**, and none may be invented. A lead's stage is its
+current `disposition`. That is what the disposition table has been all along, and a parallel
+vocabulary would give the system two ways to say where a lead sits.
+
+```
+stage_probability(disposition) =
+    delivered orders ÷ leads that passed through that disposition,
+    over a rolling window, materialised nightly from the order ledger
+```
+
+**Fallback.** Where fewer than **30** leads sit behind a disposition's measured rate, use
+`lead_source.expected_conversion_rate` instead. Same shrinkage instinct as the EES score (§5): a
+rate computed from nine leads is noise wearing a decimal point.
+
+Every forecast output carries `forecast_weight_source`, one of:
+
+| Value | Meaning |
+|---|---|
+| `MEASURED_DISPOSITION_RATE` | ≥30 leads behind the disposition. Measured from the ledger. |
+| `SOURCE_EXPECTED_RATE` | Below the threshold. Falling back to the source's configured rate. |
+
+No new table, no invented numbers, and it self-corrects as history accumulates.
+
+### 10.2 `seasonality_index` — the term stays, the value is neutralised (D-44, resolves N10)
+
+F16 calls for seasonality, and dropping it silently was wrong. But it **cannot be fitted on five
+months of history** (Apr–Aug). An index fitted on that little data looks principled while encoding
+noise, which is worse than not having one.
+
+So: the term stays in the formula, and every month is seeded **1.0000, `is_provisional = true`**,
+in the `seasonality_index` table — data, admin-editable, never a constant in code.
+
+**A formula silently missing a term is far harder to find later than one carrying an obvious 1.0.**
+
+Revisit at **18+ months** of history, or sooner if **O-06** releases the 2025 archive. Until then no
+screen may describe the forecast as seasonally adjusted, because it is not.

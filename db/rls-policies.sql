@@ -122,7 +122,7 @@ DO $$
 DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['product_line','sku','lead_source','disposition',
-                           'disposition_alias','working_calendar']
+                           'disposition_alias','working_calendar','seasonality_index']
   LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY;', t);
     EXECUTE format('ALTER TABLE %I FORCE  ROW LEVEL SECURITY;', t);   -- defect N6
