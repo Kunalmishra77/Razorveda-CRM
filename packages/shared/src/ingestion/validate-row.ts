@@ -1,4 +1,5 @@
 import { normaliseDate, normalisePhone, parsePayment } from '../normalise/index.js';
+import type { RowStatus } from '../enums.js';
 
 /**
  * Row-level validation (docs/06 stage 5).
@@ -8,7 +9,10 @@ import { normaliseDate, normalisePhone, parsePayment } from '../normalise/index.
  * reviewing ~26 rows on a 500-row day is the entire design.
  */
 
-export type RowStatus = 'VALID' | 'WARNING' | 'ERROR' | 'DUPLICATE' | 'PARKED';
+// RowStatus is the Postgres enum mirror (imported above), not a second copy of
+// the same five values. Two definitions of a row's status would be exactly the
+// drift the enum-parity guardrail exists to prevent — the compiler caught it.
+export type { RowStatus };
 
 export interface RowIssue {
   readonly field: string;
@@ -17,16 +21,24 @@ export interface RowIssue {
   readonly severity: Exclude<RowStatus, 'VALID'>;
 }
 
+/**
+ * Every field is explicitly `| undefined` as well as `| null`.
+ *
+ * Under `exactOptionalPropertyTypes` an optional property does not accept an
+ * explicit `undefined`, and every real caller produces exactly that — a mapped
+ * row is array indexing, which yields `string | undefined`. Declaring it is
+ * honest about what arrives rather than forcing callers to launder their data.
+ */
 export interface RowInput {
-  readonly phone?: string | null;
-  readonly altPhone?: string | null;
-  readonly name?: string | null;
-  readonly date?: string | null;
-  readonly amount?: string | null;
-  readonly paymentMode?: string | null;
-  readonly pincode?: string | null;
-  readonly state?: string | null;
-  readonly productText?: string | null;
+  readonly phone?: string | null | undefined;
+  readonly altPhone?: string | null | undefined;
+  readonly name?: string | null | undefined;
+  readonly date?: string | null | undefined;
+  readonly amount?: string | null | undefined;
+  readonly paymentMode?: string | null | undefined;
+  readonly pincode?: string | null | undefined;
+  readonly state?: string | null | undefined;
+  readonly productText?: string | null | undefined;
 }
 
 export interface RowContext {
@@ -35,9 +47,9 @@ export interface RowContext {
   readonly dateLocale: 'DMY' | 'MDY' | 'YMD';
   readonly todayIso: string;
   /** `sku.mrp` for the resolved product, when one resolved. Drives value sanity. */
-  readonly skuMrp?: string | null;
+  readonly skuMrp?: string | null | undefined;
   /** Set by the caller after the in-batch and cross-batch duplicate checks. */
-  readonly isDuplicate?: boolean;
+  readonly isDuplicate?: boolean | undefined;
 }
 
 export interface RowVerdict {

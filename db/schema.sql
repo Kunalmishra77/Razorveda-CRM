@@ -214,7 +214,7 @@ CREATE TABLE ingestion_batch (
   source_id           uuid NOT NULL REFERENCES lead_source(source_id),
   uploaded_by         uuid NOT NULL REFERENCES app_user(user_id),
   file_name           text NOT NULL,
-  file_hash           char(64) UNIQUE NOT NULL,       -- refuses duplicate uploads
+  file_hash           char(64) NOT NULL,              -- refuses duplicate uploads; see index below
   file_url            text NOT NULL,
   row_count           int DEFAULT 0,
   rows_valid          int DEFAULT 0,
@@ -228,6 +228,17 @@ CREATE TABLE ingestion_batch (
   rolled_back_at      timestamptz,
   created_at          timestamptz NOT NULL DEFAULT now()
 );
+
+-- The duplicate guard is PARTIAL, and deliberately so.
+--
+-- Its job is to stop the same export being COUNTED TWICE (docs/06 stage 1). A
+-- rolled-back batch was un-counted, so re-uploading that file is not a double
+-- count — it is the admin taking back a rollback they did by mistake. A plain
+-- UNIQUE would have made the duplicate message ("roll back batch X first if you
+-- meant to replace it") a lie: rolling back would not have helped, because the
+-- hash was still taken. Found by running the rollback path end to end.
+CREATE UNIQUE INDEX ux_batch_file_hash_active
+  ON ingestion_batch (file_hash) WHERE status <> 'ROLLED_BACK';
 
 CREATE TABLE staging_row (
   staging_id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -80,7 +80,27 @@ export function initialise(): void {
  */
 export async function start(timeoutMs = 30_000): Promise<void> {
   initialise();
-  if (isRunning() && (await acceptsConnections())) return;
+
+  // "Running but not ready" is NOT "not running". Treating them the same spawned
+  // a second postgres against a live data directory while the first was merely
+  // recovering — the log shows `lock file "postmaster.pid" already exists`. The
+  // second process exits harmlessly, but pointing two servers at one cluster is
+  // not something to leave to luck. If a live postmaster owns the directory, wait
+  // for it rather than starting another.
+  if (isRunning()) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (await acceptsConnections()) return;
+      if (!isRunning()) break; // it died while we waited; fall through and start
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    if (isRunning()) {
+      throw new Error(
+        `A postgres is running on this data directory but is not accepting queries ` +
+          `after ${timeoutMs / 1000}s. It may still be recovering — check ${LOG_FILE}.`,
+      );
+    }
+  }
 
   // postgres.exe directly, NOT via pg_ctl. Three Windows problems, all found by
   // running it rather than by reading:

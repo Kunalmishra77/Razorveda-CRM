@@ -73,8 +73,11 @@ export class UploadService {
         created_at: string;
         rows_committed: number;
       }>(
+        // Excludes ROLLED_BACK: that batch was un-counted, so re-uploading the
+        // file is not a double count. Without this the refusal message would be
+        // a lie — it tells the admin to roll back and try again.
         `SELECT batch_id, file_name, created_at, rows_committed
-           FROM ingestion_batch WHERE file_hash = $1`,
+           FROM ingestion_batch WHERE file_hash = $1 AND status <> 'ROLLED_BACK'`,
         [hash],
       );
 
