@@ -8,6 +8,7 @@
 export * from './enums.js';
 export * from './primitives.js';
 export * from './money.js';
+export * from './selection.js';
 export * from './crypto-params.js';
 export * from './forecast-params.js';
 
