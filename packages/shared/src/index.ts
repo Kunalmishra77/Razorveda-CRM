@@ -13,6 +13,7 @@ export * from './normalise/index.js';
 export * from './normalise/type-contracts.js';
 export * from './normalise/column-shift.js';
 export * from './ingestion/fingerprint.js';
+export * from './ingestion/column-mapping.js';
 export * from './crypto-params.js';
 export * from './forecast-params.js';
 
