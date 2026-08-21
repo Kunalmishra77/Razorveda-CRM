@@ -3,7 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "description": "Internal CRM & MIS automation platform for Razorveda",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -18,13 +20,15 @@
     "test": "npm run test --workspaces --if-present",
     "typecheck": "tsc -b --pretty",
     "lint": "eslint . --ext .ts,.tsx",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "dev": "concurrently -n api,web,worker -c cyan,magenta,yellow \"npm run dev -w @razorveda/api\" \"npm run dev -w @razorveda/web\" \"npm run dev -w @razorveda/worker\""
   },
   "devDependencies": {
     "@types/node": "^22.5.0",
     "prettier": "^3.3.3",
     "tsx": "^4.19.0",
     "typescript": "^5.6.2",
-    "vitest": "^2.1.1"
+    "vitest": "^2.1.1",
+    "concurrently": "^9.0.1"
   }
 }

@@ -249,13 +249,40 @@ export const METRICS: readonly MetricDef[] = [
     fixes: 'F11',
   },
   {
+    key: 'per_day_avg_value',
+    name: 'Per Day Avg Value',
+    section: 3,
+    kind: 'metric',
+    grain: 'rep x period',
+    // The metric was never the defect - the hand-typed divisor was. Fixing the
+    // denominator fixes the metric, so this is live and displayable (N8).
+    formula: 'Realised Value / elapsed_working_days from working_calendar',
+    fixes: 'F17',
+  },
+  {
     key: 'forecast',
     name: 'Forecast',
     section: 3,
     kind: 'metric',
     grain: 'rep x period',
+    // Stage probabilities come from a SEEDED TABLE, never constants: Phase 3 fits
+    // them from history and that must not be a code change.
     formula:
-      '(open_pipeline x stage_probability) + (run_rate x remaining_days x seasonality_index), RTO-adjusted',
+      '((open_pipeline x stage_probability) + (Per Day Avg Value x remaining_working_days)) x (1 - rep_rolling_90d_RTO)',
+    fixes: 'F16',
+  },
+  {
+    key: 'approx_guess_rest_of_month',
+    name: 'Approx Guess Rest of Month',
+    section: 3,
+    kind: 'metric',
+    status: 'legacy',
+    grain: 'rep x period',
+    // Straight-line: no pipeline weighting, no RTO adjustment. Exists ONLY so the
+    // Phase 2 variance report can reproduce the client's figure. Superseded by
+    // Forecast. Referencing this key outside the reconciliation module is a test
+    // failure, not a review comment.
+    formula: 'Per Day Avg Value x remaining_working_days',
     fixes: 'F16',
   },
 
@@ -373,6 +400,21 @@ export const metricsOnly = (): readonly MetricDef[] => METRICS.filter((m) => m.k
 /** EES score components (section 5). */
 export const scoreComponents = (): readonly MetricDef[] =>
   METRICS.filter((m) => m.kind === 'score_component');
+
+/** Absent status means live. */
+export const statusOf = (m: MetricDef): 'live' | 'legacy' => m.status ?? 'live';
+
+/** The only metrics a screen may display. */
+export const liveMetrics = (): readonly MetricDef[] =>
+  METRICS.filter((m) => statusOf(m) === 'live');
+
+/**
+ * Recorded for reconciliation only. The render layer must refuse these, and
+ * test/legacy-containment.test.ts fails if a key here is referenced outside the
+ * reconciliation module (N8, D-38).
+ */
+export const legacyMetrics = (): readonly MetricDef[] =>
+  METRICS.filter((m) => statusOf(m) === 'legacy');
 
 /** Any screen showing one of these must label it as self-reported (D-03, docs/04). */
 export const selfReportedKeys = (): readonly string[] =>

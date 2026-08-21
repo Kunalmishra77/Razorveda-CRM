@@ -13,6 +13,20 @@
 /** Sections 1-4 are metrics. Section 5 lists the EES score components. */
 export type MetricKind = 'metric' | 'score_component';
 
+/**
+ * `legacy` means: the definition is recorded so Phase 2 can reproduce the client's
+ * number in the variance report, and the render layer must refuse to display it
+ * anywhere else (N8, D-38).
+ *
+ * Recorded, not omitted. An "it is documented but not a metric" category outside
+ * the dictionary is how the dictionary starts rotting — one source of truth, with
+ * a status on it.
+ *
+ * Absent means `live`. test/legacy-containment.test.ts enforces the restriction in
+ * code rather than in a comment.
+ */
+export type MetricStatus = 'live' | 'legacy';
+
 export interface MetricDef {
   /** Stable snake_case id used in code, API responses and view columns. */
   readonly key: string;
@@ -24,6 +38,8 @@ export interface MetricDef {
   /** docs/03 section number this metric is defined in. */
   readonly section: 1 | 2 | 3 | 4 | 5;
   readonly kind: MetricKind;
+  /** Omitted means 'live'. See MetricStatus. */
+  readonly status?: MetricStatus;
   /** Grain the metric is computed at, e.g. "rep x day". */
   readonly grain: string;
   /** The formula exactly as the dictionary states it. Prose, not executable. */

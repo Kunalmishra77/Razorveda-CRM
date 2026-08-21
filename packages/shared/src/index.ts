@@ -7,7 +7,9 @@
 
 export * from './enums.js';
 export * from './primitives.js';
+export * from './crypto-params.js';
 
+export * from './entities/auth.js';
 export * from './entities/masters.js';
 export * from './entities/identity.js';
 export * from './entities/leads.js';

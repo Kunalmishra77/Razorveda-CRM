@@ -64,8 +64,10 @@ Preserves the `Team Audit` model, auto-populated.
 | **Prepaid Ratio** | `prepaid_amount ÷ final_value` | Unmeasurable today (F5) |
 | **Value Balance** | `Target − Realised Value` | Unchanged — current formula is correct |
 | **Per Day Req Delivery** | `Value Balance ÷ remaining_working_days` from `working_calendar` | Unchanged — correct |
+| **Per Day Avg Value** | `Realised Value ÷ elapsed_working_days` from `working_calendar`. Run-rate to date. | Hand-typed divisor (F17) |
 | **Required Booking Value** | `Per Day Req Delivery ÷ (1 − rep_rolling_90d_RTO)` | Flat `× 1.15` (F11) |
-| **Forecast** | `(open_pipeline × stage_probability) + (run_rate × remaining_days × seasonality_index)`, RTO-adjusted | Straight-line (F16) |
+| **Forecast** | `((open_pipeline × stage_probability) + (Per Day Avg Value × remaining_working_days)) × (1 − rep_rolling_90d_RTO)`. Stage probabilities come from a seeded table, never constants. | Straight-line (F16), and legacy Approx Guess |
+| **Approx Guess Rest of Month** | **LEGACY — reconciliation only, never displayed.** `Per Day Avg Value × remaining_working_days`. Straight-line: no pipeline weighting, no RTO adjustment. Recorded so Phase 2 can reproduce the client's figure in the variance report. Superseded by **Forecast**. | — |
 
 ## 4. Attribution metrics
 
@@ -195,9 +197,13 @@ with Sundays off is **14**, not 11. No calendar rule produces 11. It is hand-typ
 This matters because the forecast is built on it:
 
 ```
-Nikita, client's method:  146,230.61 / 11 = 13,293.69  ->  x12 = 1,59,524
-Nikita, calendar method:  146,230.61 / 14 = 10,445.04  ->  x12 = 1,25,340
+Nikita, client's method:  146,230.61 / 11 = 13,293.69      ->  x12 = 1,59,524
+Nikita, calendar method:  146,230.61 / 14 = 10,445.0435714 ->  x12 = 1,25,341
 ```
+
+The calendar figure is **1,25,341**, not 1,25,340. The earlier number came from multiplying the
+*displayed* `10,445.04` rather than the exact quotient — the same class of defect as the hand-typed
+11: a rounded intermediate escaping into a computed result. See section 9.
 
 A **₹34,184 over-forecast on one rep.** The v1 audit called the forecasting "straight-line
 extrapolation with no pipeline weighting" — true, but the larger error was simply a wrong divisor.
@@ -205,10 +211,14 @@ extrapolation with no pipeline weighting" — true, but the larger error was sim
 **RULE — both denominators read `working_calendar`. No hand-typed day counts anywhere.**
 
 ```
-Per Day Req Delivery        = working days from tomorrow to month end
-Per Day Avg Value           = working days from month start to today
-Approx Guess Rest of Month  = Per Day Avg Value x remaining working days, then RTO-adjusted
+remaining_working_days = working days from TOMORROW to month end   (inclusive)
+elapsed_working_days   = working days from month start to TODAY    (inclusive)
 ```
+
+Both denominators are consumed by metrics registered in section 3 — **Per Day Req Delivery**,
+**Per Day Avg Value**, **Forecast**, and the legacy **Approx Guess Rest of Month**. This section
+defines the *denominators*; it does not define metrics. Rule 1 holds: nothing is computed here that
+is not registered there. (decision D-38, resolves N8)
 
 Seed 2026 with Sundays non-working. Add an admin-toggleable holiday flag, **seeded EMPTY**, marked
 provisional until the client confirms festival closures. Every screen showing a per-day figure
@@ -217,3 +227,32 @@ carries a "provisional calendar" marker until O-08 is signed off.
 **PHASE 2 NOTE** — rebuilding Apr–Aug with the correct denominator produces **lower** per-day
 averages and **lower** forecasts than the client's sheet. That is the fix working. Put it in the
 variance report citing this section, and do not let anyone correct it back.
+
+---
+
+## 9. Exact arithmetic, rounded once (decision D-39)
+
+**All metric arithmetic runs on exact numeric values. Rounding happens once, at render.
+No metric ever consumes another metric's displayed form.**
+
+Two defects in the client's MIS are the same mistake wearing different clothes:
+
+- `Per Day Avg Value` divides by a hand-typed `11` (F17)
+- the month forecast multiplies the **displayed** `10,445.04` instead of `10,445.0435714`
+
+Both are a rounded intermediate escaping into a computed result. The first cost ₹34,184 on one rep.
+The second costs ₹1 — but it is the same failure, and only the magnitude differed.
+
+**Rules**
+
+1. Money is `numeric(12,2)` in Postgres and a decimal **string** in TypeScript. Never a float,
+   never integer paise (D-29).
+2. No `ROUND()` inside an aggregate. `ROUND(SUM(x))` is fine; `SUM(ROUND(x))` is a defect.
+3. No metric divides by, or multiplies, a column that has already been rounded for display.
+4. A view may expose a rounded column **only** with a `_display` suffix, and nothing may compute on
+   a `_display` column.
+5. Percentages and ratios are stored unrounded and formatted at render.
+
+**Expect ±₹1 against the client's sheet.** The system multiplies exact quotients where a spreadsheet
+multiplies what the cell shows. Record this in the Phase 2 variance report once and do not chase it
+per-row.

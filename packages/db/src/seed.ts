@@ -1,10 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { hash } from '@node-rs/argon2';
+import { ARGON2ID_PARAMS } from '@razorveda/shared';
 import pg from 'pg';
 import { asBool, asNumber, asPipeList, orNull, parseCsv, type CsvRow } from './csv.js';
 import { WEEKDAY, generateYear, type Weekday } from './calendar.js';
 import { assertLocalTarget, requireDatabaseUrl } from './env.js';
+import { assertLocalDevDatabase } from './sentinel.js';
 
 /**
  * Idempotent seed loader.
@@ -56,6 +58,10 @@ async function main(): Promise<void> {
   console.log(`-> ${target.user}@${target.host}:${target.port}/${target.database}`);
 
   try {
+    // Host check already passed in assertLocalTarget. This is the independent one
+    // that a tunnelled production database cannot satisfy (D-40).
+    await assertLocalDevDatabase(client, 'seed');
+
     await client.query('BEGIN');
 
     // ── product lines ────────────────────────────────────────────────────
@@ -177,7 +183,9 @@ async function main(): Promise<void> {
 
     // ── users and employees ──────────────────────────────────────────────
     // 13 rows: 1 OWNER, 3 ADMIN, 9 EMPLOYEE. Roster is provisional pending O-01 (D-19).
-    const passwordHash = await hash(DEV_PASSWORD, { algorithm: 2 /* Argon2id */ });
+    // Parameters are pinned in @razorveda/shared so a library swap cannot change
+    // the cost factor without a failing test (packages/db/test/argon2.test.ts).
+    const passwordHash = await hash(DEV_PASSWORD, ARGON2ID_PARAMS);
 
     for (const r of readSeed('employees.csv')) {
       const role = r['role'] ?? 'EMPLOYEE';

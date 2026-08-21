@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { assertLocalTarget, requireDatabaseUrl } from './env.js';
+import { assertSafeToDropSchema, createLocalDevMarker } from './sentinel.js';
 
 /**
  * Applies db/schema.sql then db/rls-policies.sql.
@@ -28,9 +29,14 @@ async function main(): Promise<void> {
 
   try {
     if (fresh) {
+      // Second, independent check. The host check cannot see through a tunnel to
+      // 127.0.0.1; this one can, because a production database has no marker (D-40).
+      await assertSafeToDropSchema(client);
       console.log('   dropping schema public');
       await client.query('DROP SCHEMA IF EXISTS public CASCADE');
       await client.query('CREATE SCHEMA public');
+      await createLocalDevMarker(client);
+      console.log('   wrote _local_dev_marker');
     }
 
     for (const file of ['schema.sql', 'rls-policies.sql']) {
