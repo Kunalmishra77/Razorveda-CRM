@@ -1,0 +1,127 @@
+import type { UserRole } from '@razorveda/shared';
+
+/**
+ * The login decision, as a pure function.
+ *
+ * Kept free of I/O so every branch is testable without a database, a clock, or a
+ * running server — and so the ORDER of the checks is visible in one place. That
+ * order is a security property, not a style choice.
+ */
+
+export type LoginFailureReason =
+  | 'INVALID_CREDENTIALS'
+  | 'ACCOUNT_LOCKED'
+  | 'OUTSIDE_SHIFT_HOURS'
+  | 'TOTP_REQUIRED';
+
+export interface LoginCandidate {
+  readonly userId: string;
+  readonly role: UserRole;
+  readonly isLocked: boolean;
+  readonly lockedReason: string | null;
+  /** Null for accounts that have not enrolled. ADMIN and OWNER must have one. */
+  readonly totpSecret: string | null;
+  /** Absent for ADMIN and OWNER, who are not shift-bound. */
+  readonly shift: { readonly start: string; readonly end: string } | null;
+}
+
+export interface LoginAttempt {
+  /** Result of verifying the submitted password against the stored Argon2id hash. */
+  readonly passwordValid: boolean;
+  readonly totpValid: boolean;
+  readonly totpProvided: boolean;
+  /** Local time at the office, "HH:MM". Asia/Kolkata — see TZ in .env. */
+  readonly localTime: string;
+}
+
+export type LoginDecision =
+  | { readonly ok: true; readonly userId: string; readonly role: UserRole }
+  | { readonly ok: false; readonly reason: LoginFailureReason; readonly message: string };
+
+/** ADMIN and OWNER carry mandatory 2FA (docs/05, Identity). */
+export const requiresTotp = (role: UserRole): boolean => role === 'ADMIN' || role === 'OWNER';
+
+/** ADMIN and OWNER are not shift-bound; reps are. */
+export const isShiftBound = (role: UserRole): boolean => role === 'EMPLOYEE';
+
+/**
+ * "HH:MM" comparison, inclusive of both ends.
+ *
+ * Handles a shift that crosses midnight (end < start), which the seeded 10:00-20:00
+ * does not — but a night shift would, and discovering that by locking a team out
+ * is an expensive way to find a bug.
+ */
+export function isWithinShift(now: string, start: string, end: string): boolean {
+  const valid = (t: string) => /^\d{2}:\d{2}(:\d{2})?$/.test(t);
+  if (!valid(now) || !valid(start) || !valid(end)) return false;
+
+  const hhmm = (t: string) => t.slice(0, 5);
+  const [n, s, e] = [hhmm(now), hhmm(start), hhmm(end)];
+
+  return s <= e ? n >= s && n <= e : n >= s || n <= e;
+}
+
+/**
+ * Check order, and why:
+ *
+ * 1. Password first. Every later reason is more specific than "no", so revealing
+ *    one before the password is verified would turn the login form into an
+ *    account-enumeration oracle: an attacker could learn which addresses exist,
+ *    which are locked, and who works which shift, without a valid credential.
+ * 2. Locked next, and it beats everything else. docs/05 test 8: a locked account
+ *    cannot authenticate until an admin unlocks it — not by waiting for their
+ *    shift, and not by producing a correct TOTP.
+ * 3. Shift window before TOTP: no point asking a rep for a code at 3am.
+ * 4. TOTP last, for ADMIN and OWNER.
+ */
+export function evaluateLogin(user: LoginCandidate, attempt: LoginAttempt): LoginDecision {
+  if (!attempt.passwordValid) {
+    return {
+      ok: false,
+      reason: 'INVALID_CREDENTIALS',
+      // Deliberately identical for a wrong password and an unknown address.
+      message: 'That email and password do not match. Check both and try again.',
+    };
+  }
+
+  if (user.isLocked) {
+    return {
+      ok: false,
+      reason: 'ACCOUNT_LOCKED',
+      // Says what happened and what to do next (docs/07 section 5). The seeded
+      // OWNER account lands here until O-07 nominates a person (D-41).
+      message: user.lockedReason
+        ? `This account is locked: ${user.lockedReason} An admin can unlock it.`
+        : 'This account is locked. Ask an admin to unlock it.',
+    };
+  }
+
+  if (isShiftBound(user.role) && user.shift) {
+    if (!isWithinShift(attempt.localTime, user.shift.start, user.shift.end)) {
+      return {
+        ok: false,
+        reason: 'OUTSIDE_SHIFT_HOURS',
+        message:
+          `Sign-in is only available during your shift, ` +
+          `${user.shift.start.slice(0, 5)} to ${user.shift.end.slice(0, 5)}. ` +
+          `Ask an admin if you need access outside these hours.`,
+      };
+    }
+  }
+
+  if (requiresTotp(user.role)) {
+    // An admin with no enrolled secret must not fall through to a successful
+    // login. Mandatory means mandatory, even when setup is incomplete.
+    if (!user.totpSecret || !attempt.totpProvided || !attempt.totpValid) {
+      return {
+        ok: false,
+        reason: 'TOTP_REQUIRED',
+        message: !user.totpSecret
+          ? 'Two-factor authentication is required for this role but is not set up yet. Ask an admin to enrol this account.'
+          : 'Enter the 6-digit code from your authenticator app.',
+      };
+    }
+  }
+
+  return { ok: true, userId: user.userId, role: user.role };
+}

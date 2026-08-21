@@ -21,7 +21,8 @@
     "typecheck": "tsc -b --pretty",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write .",
-    "dev": "concurrently -n api,web,worker -c cyan,magenta,yellow \"npm run dev -w @razorveda/api\" \"npm run dev -w @razorveda/web\" \"npm run dev -w @razorveda/worker\""
+    "dev": "concurrently -n api,web,worker -c cyan,magenta,yellow \"npm run dev -w @razorveda/api\" \"npm run dev -w @razorveda/web\" \"npm run dev -w @razorveda/worker\"",
+    "test:rls": "npm run test:rls -w @razorveda/api"
   },
   "devDependencies": {
     "@types/node": "^22.5.0",
