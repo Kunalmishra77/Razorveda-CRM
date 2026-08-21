@@ -11,6 +11,17 @@ Rules:
 
 ---
 
+## 0. Section numbering is load-bearing
+
+The parity parser derives section context from these headings. Numbers must be unique and
+sequential. `packages/metrics` asserts this separately from parity — a duplicate number files a
+metric under the wrong section and produces a mismatch that reads as "missing metric", sending the
+next person to the wrong file. (defect N7)
+
+Longer term: key sections off a stable slug and treat the digit as a display label only.
+
+---
+
 ## 1. Activity metrics
 
 | Metric | Formula | Grain | Note |
@@ -130,7 +141,7 @@ All slabs and modifiers live in tables, versioned, admin-editable. Never hardcod
 
 ---
 
-## 6. Period basis — Booked vs Realised (defect B4, decision D-13)
+## 7. Period basis — Booked vs Realised (defect B4, decision D-13)
 
 The v1 draft asserted "Realised can never exceed Booked". **That is false at period grain and
 correct at order grain.** An order booked 28 August and delivered 3 September is August booked and
@@ -164,3 +175,45 @@ period basis clarified, that gap is **most likely an ordinary cohort artefact** 
 delivering in August — not proof of corruption. The real defect in the client's sheet is that it
 never states which basis it uses, so nobody can tell an artefact from an error. Do not repeat that
 claim to the client without this correction.
+
+
+---
+
+## 8. Working-day denominators (decision D-34, resolves O-08)
+
+The client's sheet uses two different definitions of "day" in one table, and only one is
+reproducible.
+
+**FORWARD — verified.** `Per Day Req Delivery = Value Balance / 12` on the 17 Aug 2026 snapshot.
+Working days 18–31 Aug with Sundays non-working is exactly 12. Nikita:
+`153,769.39 / 12 = 12,814.11583`, matching the sheet to five decimals. Sundays-off is **confirmed by
+the data, not assumed.**
+
+**BACKWARD — not reproducible.** `Per Day Avg Value = Achieve Value / 11`. Working days 1–17 Aug
+with Sundays off is **14**, not 11. No calendar rule produces 11. It is hand-typed.
+
+This matters because the forecast is built on it:
+
+```
+Nikita, client's method:  146,230.61 / 11 = 13,293.69  ->  x12 = 1,59,524
+Nikita, calendar method:  146,230.61 / 14 = 10,445.04  ->  x12 = 1,25,340
+```
+
+A **₹34,184 over-forecast on one rep.** The v1 audit called the forecasting "straight-line
+extrapolation with no pipeline weighting" — true, but the larger error was simply a wrong divisor.
+
+**RULE — both denominators read `working_calendar`. No hand-typed day counts anywhere.**
+
+```
+Per Day Req Delivery        = working days from tomorrow to month end
+Per Day Avg Value           = working days from month start to today
+Approx Guess Rest of Month  = Per Day Avg Value x remaining working days, then RTO-adjusted
+```
+
+Seed 2026 with Sundays non-working. Add an admin-toggleable holiday flag, **seeded EMPTY**, marked
+provisional until the client confirms festival closures. Every screen showing a per-day figure
+carries a "provisional calendar" marker until O-08 is signed off.
+
+**PHASE 2 NOTE** — rebuilding Apr–Aug with the correct denominator produces **lower** per-day
+averages and **lower** forecasts than the client's sheet. That is the fix working. Put it in the
+variance report citing this section, and do not let anyone correct it back.

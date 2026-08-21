@@ -108,3 +108,26 @@ documented, per CLAUDE.md section 4 ("Log decisions").
 | # | Observation | Status |
 |---|---|---|
 | **N7** | `docs/03-metric-dictionary.md` has **two headings numbered `## 6.`** — "6. Incentive" (line 114) and "6. Period basis" (line 133). The second is presumably section 7. | Flagged, not fixed. Harmless today because neither is a metric table, but the parity parser keys section context off the heading number, so a metric table added under the second `## 6.` would be filed under section 6 and mismatch the registry. Client/author call. |
+
+---
+
+# Decisions taken 2026-08-21 — third pass
+
+| ID | Decision | Rationale |
+|---|---|---|
+| **D-34** | **O-08 resolved.** Sundays non-working, confirmed by reproducing the client's forward denominator exactly (`153,769.39 / 12 = 12,814.11583`, matching the sheet to five decimals). **Both** denominators come from `working_calendar` — no hand-typed day counts anywhere. Festival holidays seed **empty**, admin-toggleable, provisional until the client confirms. See metric dictionary section 8. | The forward rule was verifiable from the client's own numbers, so Sundays-off is confirmed by data rather than assumed. The backward rule was not reproducible by any calendar — see F17. |
+| **D-35** | Section numbers in `docs/03` are **unique and sequential**, asserted by its own test (`packages/metrics/test/section-numbering.test.ts`) with its own failure message. The parity parser should eventually key off a stable slug, not the digit. | N7. A duplicate number does not fail loudly — it files a metric under the wrong section, and parity then reports a *missing metric*, sending the next person to edit the registry when the defect is a heading. The separate test fails first and names the document, the line numbers and the fix. |
+| **D-36** | Corrections ship as **instructions or file patches over an existing tree**, never a folder replacement. | A folder replacement destroyed `.git` and `.gitattributes` once already, silently. Nothing in the working tree should be able to disappear without a commit recording it. |
+| **D-37** | A markdown table in `docs/03` whose first header cell is `Metric` or `Component` **is** a metric-definition table, by parser contract. Denominator rules, levers, bases and other prose tables must use a different header or a code block. | Caught immediately by the parity test while applying D-34: rendering the section 8 denominators as a `\| Metric \|` table added three phantom metrics (39 -> 42). The parser was right; the formatting was wrong. Documented so the next person renders it correctly the first time. |
+
+## New finding
+
+| ID | Finding | Evidence | Design response |
+|---|---|---|---|
+| **F17** | **`Per Day Avg Value` divides by a hand-typed 11 where the calendar gives 14.** Every rep's "Approx Guess Rest of Month" is overstated by roughly a third. | Working days 1–17 Aug 2026 with Sundays off is 14. No calendar rule produces 11. Nikita: `146,230.61 / 11 = 13,293.69 -> x12 = 1,59,524` against the calendar-correct `146,230.61 / 14 = 10,445.04 -> x12 = 1,25,340`. A **₹34,184 over-forecast on one rep.** | Both denominators read `working_calendar` (D-34). This is the mechanism behind the over-forecasting recorded in F16 — the v1 audit blamed straight-line extrapolation, which was true but smaller than the wrong divisor. Carry into the Phase 2 variance report citing metric dictionary section 8. |
+
+## Raised this session, not decided
+
+| # | Question | Status |
+|---|---|---|
+| **N8** | Are `Per Day Avg Value` and `Approx Guess Rest of Month` **certified metrics** that belong in docs/03 section 3 with registry entries, or legacy formulas superseded by `Forecast`? Section 8 now specifies how to compute both, but neither is defined in section 3 and neither is in the registry. Under docs/03 rule 1 ("if a metric is not in this file, it does not exist and no screen may display it") they currently cannot be displayed. | Flagged, not decided. `Forecast` (section 3) is their stated replacement per F16, so the honest reading is that they are legacy — but section 8 gives them live computation rules, which reads as though they survive. Needs one line either way. |
