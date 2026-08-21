@@ -3,69 +3,183 @@
 Internal CRM and MIS automation for Razorveda — an Indian ayurvedic D2C brand shipping COD
 pan-India with a 7-person tele-sales team.
 
-## Getting started
+It replaces nine Google Sheets and a hand-built MIS pack. The CRM is the smaller half. The larger
+half is that there is currently no single trustworthy definition of a customer, an order, or a
+salesperson's number.
 
-1. Open this folder in VS Code.
-2. Open Claude Code in the integrated terminal.
-3. Open `prompts/00-kickoff.md`, copy the prompt inside the code block, and paste it as your first
-   message.
-4. Read what comes back. Argue with it. Then say "go".
+---
 
-## What is in here
+## Set up in 15 minutes
+
+**Prerequisites:** Node 20+, Docker Desktop, and `psql` (optional, for the RLS proof).
+
+```bash
+git clone <repo> && cd razorveda-crm
+npm install                       # ~2 min, installs all workspaces
+cp .env.example .env              # defaults already point at the local stack
+
+npm run infra:up                  # postgres 16, redis 7, minio
+npm run db:migrate -- --fresh     # applies db/schema.sql then db/rls-policies.sql
+npm run db:seed                   # masters, 13 users, 2026 working calendar
+npm test                          # 93 tests
+npm run dev                       # api :3001, web :3000, worker
+```
+
+Then open <http://localhost:3000>, and <http://localhost:3001/metrics/registry> to see the
+certified metric layer.
+
+### Two things that will confuse you if nobody warns you
+
+**1. `db:seed` refuses to run on a database it does not recognise.**
 
 ```
-CLAUDE.md            Standing context for Claude Code. Read first, every session.
-prompts/             The kickoff prompt, one prompt per phase, and utility prompts.
-docs/                The specification. Nine documents.
-tasks/               Seven phase definitions with exit criteria.
-db/                  schema.sql, rls-policies.sql, and seed CSVs.
-fixtures/            Deliberately messy test files reproducing the client's real data defects.
-design/              Clickable prototype + design tokens.
+REFUSING to run "seed".
+  This database has no _local_dev_marker row, so it is not a known local-dev database.
 ```
 
-## Reading order for a human
+That is working as designed (**D-40**). Only `npm run db:migrate -- --fresh` creates the marker.
+Run that first.
 
-1. `docs/00-product-brief.md` — what this is and who uses it
-2. `docs/08-audit-findings.md` — every defect in the current system, measured
-3. `design/prototype.html` — open in a browser, click through all six sections
-4. `docs/03-metric-dictionary.md` — the definitions everything else depends on
-5. `docs/09-decisions-log.md` — what is decided and what still needs your call
+The reason is worth knowing. The production database is reachable over Tailscale at
+`127.0.0.1:55432` — **loopback**, so a host check cannot tell it apart from your local Postgres.
+The marker can: production has tables and no marker, so it fails closed regardless of what
+`DATABASE_URL` says. Both checks run; neither is sufficient alone.
 
-## Before Phase 0 starts
+This guards the realistic accident — a stray `DATABASE_URL` during a seed. It does not stop a
+determined operator, and `migrate --fresh` has already dropped the schema by the time the marker
+would matter. Do not treat it as more than it is.
 
-Ten open decisions are listed in `docs/09-decisions-log.md`. Items **O-01** (employee roster),
-**O-02** (Shopify base prices) and **O-08** (working calendar) block Phase 0 directly — the seed
-data currently contains best guesses derived from the client's spreadsheets, not confirmed values.
+**2. An RLS test that does not `SET ROLE app_role` first proves nothing.**
 
-## Ground rules
-
-- Nothing gets built until `docs/03-metric-dictionary.md` is signed off.
-- AI never computes a number. All arithmetic is SQL over immutable facts.
-- Employee isolation is enforced by Postgres RLS, not by application code.
-- Incentive is earned on delivery, not booking.
-- Leads are never assigned automatically.
-
-## Reference documents
-
-`docs/reference/` holds the two original planning documents this repo was built from. They are
-background, not the working spec — the working spec is `docs/00` through `docs/10`.
-
-- `blueprint-v1.md` — the original A-to-Z architecture review with the full audit
-- `addendum-v2.md` — the revised operating model (manual assignment, handset dialling, two roles)
-
-## RLS caveat — read before testing isolation
-
-Postgres table **owners bypass RLS**. The migration user owns the tables; the application must never
-connect as that user. Every isolation test must run as `app_role`:
+Postgres table owners **bypass RLS**. The migration user owns the tables, so a query run as the
+migration user returns every row while looking like a passing test. Always:
 
 ```sql
 SET ROLE app_role;
+SET app.user_id   = '<an employee uuid>';
 SET app.user_role = 'EMPLOYEE';
-SET app.user_id   = '<employee uuid>';
-SELECT count(*) FROM lead;                  -- only that rep's leads
-SELECT count(*) FROM customer_identifier;   -- only their customers' phones
+SELECT count(*) FROM lead;                 -- only that rep's leads
+SELECT count(*) FROM customer_identifier;  -- only their customers' phones
 RESET ROLE;
 ```
 
-Running the same check as the owner returns every row and looks like a failure — or worse, is run
-without `SET ROLE`, returns the right number by accident, and everyone believes isolation works.
+`app_role` owns nothing. `npm run db:migrate` fails if it ever does (**D-21**).
+
+---
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `npm run infra:up` / `infra:down` | Start / stop Postgres, Redis, MinIO |
+| `npm run infra:reset` | Destroy volumes and start clean |
+| `npm run db:migrate` | Apply schema + RLS policies |
+| `npm run db:migrate -- --fresh` | Drop `public` first. Writes `_local_dev_marker`. |
+| `npm run db:seed` | Idempotent. Run it twice; counts do not change. |
+| `npm run db:seed -- --year 2027 --non-working 0,6 --holidays 2027-10-20` | Calendar for another year or weekend shape |
+| `npm test` | All workspaces |
+| `npm run dev` | api + web + worker |
+| `npm run typecheck` | All six workspaces |
+
+### Seeded accounts
+
+13 users — **1 OWNER, 3 ADMIN, 9 EMPLOYEE**. Password for all: `razorveda-dev-only`
+(override with `SEED_DEFAULT_PASSWORD`). Local only; a real deployment provisions credentials out
+of band.
+
+The **OWNER account is seeded locked** with `locked_reason` naming **O-07**, because nobody has
+nominated a person yet. Set the real email and unlock to claim it. This is deliberate, not a bug —
+do not "fix" it by adding a forced-reset column (**D-41**).
+
+---
+
+## Layout
+
+```
+apps/api        NestJS. Modules mirror the domain: auth, customers, leads, orders,
+                assignment, ingestion, reports, masters, audit.
+apps/web        Next.js App Router. Route groups: (admin) and (employee).
+apps/worker     BullMQ. Queues: ingestion, scoring, reports, notifications.
+packages/db     schema, migrations, seed loader, working calendar, guards.
+packages/shared Zod schemas, types, enums, crypto parameters. Imported by api AND web.
+packages/metrics Certified metric registry + the parity guardrails.
+docs/           The specification. docs/00 through docs/09 plus tasks/ are the working spec.
+tasks/          Seven phase definitions with exit criteria.
+fixtures/       Deliberately messy files reproducing the client's real data defects.
+db/seed/        Master data as CSV. Change data here, never in code.
+```
+
+---
+
+## The guardrails, and why they exist
+
+Four tests exist to stop two sources of truth drifting apart. They are not ceremony — each one
+replaced a defect that had already happened.
+
+| Guardrail | Fails when |
+|---|---|
+| `packages/metrics` **registry parity** | A metric is in `docs/03` but not the registry, or the reverse. Both directions. |
+| `packages/metrics` **section numbering** | `docs/03` has a duplicate or non-sequential section number — which would file a metric under the wrong section and report it as *missing*, sending you to the wrong file. |
+| `packages/metrics` **legacy containment** | A `legacy` metric key is referenced outside the reconciliation module. |
+| `packages/shared` **enum parity** | A Postgres enum in `db/schema.sql` has no TypeScript mirror, or values drift. |
+
+Each one also **guards the guard** — it asserts that its own parser matched something. A parser
+that silently matches nothing makes every assertion in the file pass vacuously, which is how this
+kind of test rots without anyone noticing.
+
+**If a guardrail fails, change the document and the code together. Never relax the assertion.**
+
+---
+
+## Rules you cannot break
+
+Full list in `CLAUDE.md`. The ones that bite first:
+
+1. **AI proposes, deterministic code disposes.** No LLM ever produces a money figure, a score, an
+   assignment, or a ledger row.
+2. **Append-only for money and status.** Corrections are new rows. `UPDATE` on `activity`,
+   `order_status_event`, `lead_assignment`, `attribution_ledger`, `audit_log` or `pii_access_log`
+   raises.
+3. **Realised, not booked.** Credit is earned on delivery. The invariant is **per order**, not per
+   period — realised legitimately *can* exceed booked within a month (**D-13**, docs/03 §7).
+4. **RLS is the isolation mechanism**, not application `WHERE` clauses.
+5. **Exact arithmetic, rounded once at render.** No metric consumes another metric's displayed
+   form (**D-39**, docs/03 §9). Expect ±₹1 against the client's sheet and do not chase it.
+6. **Money is `numeric(12,2)` and a decimal string in TypeScript.** Never a float.
+7. **Every metric has exactly one definition**, in `docs/03`. If it is not there, it does not exist
+   and no screen may display it.
+
+---
+
+## Reading order for a new developer
+
+1. `CLAUDE.md` — standing context, including §7b, the corrections that cost two audit passes
+2. `docs/00-product-brief.md` — what this is and who uses it
+3. `docs/08-audit-findings.md` — every defect in the current system, measured
+4. `design/prototype.html` — open in a browser
+5. `docs/03-metric-dictionary.md` — the definitions everything else depends on
+6. `docs/09-decisions-log.md` — what is decided, what is open, and why
+
+---
+
+## Open decisions
+
+Tracked in `docs/09-decisions-log.md`. Blocking Phase 1 exit: **O-01** roster, **O-02** Shopify base
+prices, **O-07** owner account. Also open: O-03, O-06, O-11, O-12, O-13, plus N9 and N10.
+
+Seed data for unconfirmed items is **inferred, not confirmed** — Shopify base prices and SKU usage
+days especially. Every per-day figure is marked provisional until the working calendar is signed off.
+
+---
+
+## Troubleshooting
+
+**`seed` refuses to run** — see "Two things" above. Run `npm run db:migrate -- --fresh`.
+
+**`TypeError: Cannot read properties of undefined (reading 'value')` from the API** — you ran `tsx`
+from the repo root, so it found no `tsconfig.json` and emitted standard decorators instead of the
+legacy ones NestJS needs. Use `npm run dev -w @razorveda/api`, which runs with `apps/api` as cwd.
+
+**Worker exits immediately** — Redis is not up. `npm run infra:up`.
+
+**RLS test returns every row** — you did not `SET ROLE app_role`. See above.
