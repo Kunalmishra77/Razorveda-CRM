@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, openSync, rmSync, writeFileSync } from 'node:fs';
+import { connect } from 'node:net';
+import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -77,9 +78,9 @@ export function initialise(): void {
  * and the caller hangs forever. Found by running it. Start without -w and poll
  * `pg_ctl status` instead, which is what -w was buying us anyway.
  */
-export function start(timeoutMs = 30_000): void {
+export async function start(timeoutMs = 30_000): Promise<void> {
   initialise();
-  if (isRunning()) return;
+  if (isRunning() && (await acceptsConnections())) return;
 
   // postgres.exe directly, NOT via pg_ctl. Three Windows problems, all found by
   // running it rather than by reading:
@@ -89,10 +90,10 @@ export function start(timeoutMs = 30_000): void {
   //   2. spawnSync cannot truly detach: the server died when node exited.
   //   3. pg_ctl passes its CONSOLE to the server it launches, so any Ctrl-C in
   //      that console kills the database — including the one a `timeout` wrapper
-  //      sends. The log shows exit 0xC000013A, STATUS_CONTROL_C_EXIT, killing a
-  //      CREATE DATABASE mid-flight.
+  //      sends. The log showed 0xC000013A, STATUS_CONTROL_C_EXIT, killing a
+  //      CREATE DATABASE mid-flight and leaving a cluster that could not recover.
   //
-  // `detached: true` on Windows gives the child DETACHED_PROCESS: no console, so
+  // `detached: true` gives the child DETACHED_PROCESS on Windows: no console, so
   // no console signal can reach it. Output goes straight to the log file.
   mkdirSync(DATA_DIR, { recursive: true });
   const log = openSync(LOG_FILE, 'a');
@@ -105,25 +106,38 @@ export function start(timeoutMs = 30_000): void {
 
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    // Sync poll keeps `pg:start && db:migrate` working as an ordinary shell chain.
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
-    if (isRunning() && acceptsConnections()) return;
+    await new Promise((r) => setTimeout(r, 250));
+    if (isRunning() && (await acceptsConnections())) return;
   }
   throw new Error(`postgres did not come up within ${timeoutMs / 1000}s. Check ${LOG_FILE}.`);
 }
 
 /**
- * `pg_ctl status` reports success as soon as postmaster.pid exists, which is
- * before the server accepts clients. Connecting one tick too early gives
- * ECONNRESET, so readiness is a real handshake, not a pid file.
+ * A real protocol handshake, in-process.
+ *
+ * The pid file appears before the server accepts clients, so connecting one tick
+ * early gives ECONNRESET. This opens a socket and sends an SSLRequest — the
+ * cheapest message that proves a live postmaster — using node's own net module
+ * rather than spawning a child to do it.
  */
-function acceptsConnections(): boolean {
-  const r = spawnSync(
-    process.execPath,
-    ['-e', `const n=require('net');const s=n.createConnection({host:'127.0.0.1',port:${LOCAL_PG_PORT}});s.setTimeout(1500);s.on('connect',()=>{const b=Buffer.alloc(8);b.writeInt32BE(8,0);b.writeInt32BE(80877103,4);s.write(b)});s.on('data',()=>{s.end();process.exit(0)});s.on('timeout',()=>process.exit(1));s.on('error',()=>process.exit(1));`],
-    { encoding: 'utf8', windowsHide: true, timeout: 4000 },
-  );
-  return r.status === 0;
+function acceptsConnections(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect({ host: '127.0.0.1', port: LOCAL_PG_PORT });
+    const done = (result: boolean): void => {
+      socket.destroy();
+      resolve(result);
+    };
+    socket.setTimeout(1500);
+    socket.on('connect', () => {
+      const req = Buffer.alloc(8);
+      req.writeInt32BE(8, 0);
+      req.writeInt32BE(80877103, 4); // SSLRequest
+      socket.write(req);
+    });
+    socket.on('data', () => done(true));
+    socket.on('timeout', () => done(false));
+    socket.on('error', () => done(false));
+  });
 }
 
 export function stop(): void {
@@ -131,10 +145,28 @@ export function stop(): void {
   run(exe('pg_ctl'), ['-D', DATA_DIR, '-m', 'fast', '-w', 'stop'], 'pg_ctl stop');
 }
 
+/**
+ * Reads postmaster.pid rather than shelling out to `pg_ctl status`.
+ *
+ * The pg_ctl version spawned a console process on every call, and start() called
+ * it in a 250ms loop — which on Windows means a burst of console windows flashing
+ * on screen. Reading the pid file and signalling the process with kill(pid, 0)
+ * answers the same question with no subprocess at all.
+ */
 export function isRunning(): boolean {
   if (!isInitialised()) return false;
-  const r = spawnSync(exe('pg_ctl'), ['-D', DATA_DIR, 'status'], { encoding: 'utf8', windowsHide: true });
-  return r.status === 0;
+  const pidFile = join(DATA_DIR, 'postmaster.pid');
+  if (!existsSync(pidFile)) return false;
+  // postmaster.pid carries the server PID on its first line.
+  const firstLine = readFileSync(pidFile, 'utf8').split(String.fromCharCode(10))[0] ?? '';
+  const pid = Number(firstLine.trim());
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0); // signal 0: existence check, sends nothing
+    return true;
+  } catch {
+    return false; // stale pid file from an unclean shutdown
+  }
 }
 
 /** Wipes the cluster entirely. Only ever touches the repo-local data directory. */
@@ -153,7 +185,7 @@ async function main(): Promise<void> {
   const command = process.argv[2];
   switch (command) {
     case 'start': {
-      start();
+      await start();
       console.log(`postgres 16 up on 127.0.0.1:${LOCAL_PG_PORT} (data: .pgdata)`);
       console.log(`  DATABASE_URL=${superuserUrl(DATABASE)}`);
       console.log(`  DATABASE_URL_APP=${appUrl()}`);
