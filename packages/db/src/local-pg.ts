@@ -148,6 +148,12 @@ async function acceptsConnections(): Promise<boolean> {
     connectionString: superuserUrl('postgres'),
     connectionTimeoutMillis: 2000,
   });
+  // pg.Client emits 'error' as an EVENT, not only as a rejected promise. With no
+  // listener attached, Node treats it as unhandled and throws straight past the
+  // try/catch below — which is exactly what happened: a readiness probe against a
+  // still-recovering server crashed `pg:start` with the very error it was written
+  // to tolerate.
+  client.on('error', () => undefined);
   try {
     await client.connect();
     await client.query('SELECT 1');
