@@ -23,6 +23,11 @@ export interface AttributionLine {
    */
   readonly shopifyBasePrice: string | null;
   /**
+   * `sku.shopify_base_price_confirmed`. False means the value is the inferred
+   * seed suggestion, not a price a human has stood behind (O-02, D-81).
+   */
+  readonly shopifyBasePriceConfirmed: boolean;
+  /**
    * False = arrived in the original cart. True = the rep added it.
    * This is what separates committed value from earned value.
    */
@@ -66,8 +71,9 @@ export class AttributionError extends Error {
  * A non-upsell line whose SKU has no `shopify_base_price` is an ERROR, never a
  * silent zero. Defaulting to zero would credit the rep the entire order value —
  * which is exactly the F7 defect, reproduced faithfully in code. Failing loudly
- * sends the row to the exception queue where a human decides. O-02 is still open,
- * so this will fire on real data until the client confirms the base prices.
+ * sends the row to the exception queue where a human decides. O-02 is resolved as
+ * a MECHANISM, not a list: the admin fills prices in Master Data, so this firing
+ * on a fresh install is the workflow starting, not a defect (D-81).
  */
 function upsellBaseValue(lines: readonly AttributionLine[]): string {
   const committed = lines.filter((l) => !l.isUpsell);
@@ -78,8 +84,23 @@ function upsellBaseValue(lines: readonly AttributionLine[]): string {
     throw new AttributionError(
       `Cannot compute company base value: ${missing.length} non-upsell line(s) ` +
         `have no shopify_base_price (sku ${missing.map((m) => m.skuId).join(', ')}). ` +
-        `Set the base price on the SKU, or mark the line as an upsell. ` +
+        `Set the base price in Master Data, or mark the line as an upsell. ` +
         `Defaulting to zero would credit the rep the entire order value (F7).`,
+    );
+  }
+
+  // A price nobody has confirmed is a guess, and this number decides what a rep
+  // is paid. The seeded 899 / 849 / 949 were reverse-engineered from order data;
+  // they are a suggestion for the admin, not an input to payroll. Refusing here
+  // routes the order to the exception queue where an admin confirms the price and
+  // retries — which is the workflow, not a failure. (O-02, D-81)
+  const unconfirmed = committed.filter((l) => !l.shopifyBasePriceConfirmed);
+  if (unconfirmed.length > 0) {
+    throw new AttributionError(
+      `Cannot compute company base value: ${unconfirmed.length} line(s) use an ` +
+        `UNCONFIRMED base price (sku ${unconfirmed.map((m) => m.skuId).join(', ')}). ` +
+        `The seeded value is inferred from historical orders, not a confirmed price. ` +
+        `An admin must confirm it in Master Data before it can decide anyone's credit.`,
     );
   }
 

@@ -45,7 +45,18 @@ CREATE TABLE sku (
   variant             text,
   pack_size           text,
   mrp                 numeric(10,2) NOT NULL,
-  shopify_base_price  numeric(10,2),          -- drives UPSELL_DELTA attribution (F7)
+  -- Drives UPSELL_DELTA attribution (F7). The seeded values are REVERSE-ENGINEERED
+  -- from the client's order data, not confirmed prices — and this column decides
+  -- how much a rep is paid. CLAUDE.md rule 1: never guess a money figure.
+  --
+  -- So the number and its provenance are separate. The seeded value is a
+  -- SUGGESTION shown to the admin; attribution refuses to compute until an admin
+  -- confirms it in Master Data. Until then the order lands in the exception queue,
+  -- which is the intended workflow, not a defect. (O-02, D-81)
+  shopify_base_price            numeric(10,2),
+  shopify_base_price_confirmed  boolean NOT NULL DEFAULT false,
+  shopify_base_price_set_by     uuid,   -- FK added after app_user exists, below
+  shopify_base_price_set_at     timestamptz,
   usage_days          int,                    -- drives the repeat-purchase engine
   name_aliases        text[] DEFAULT '{}',
   is_active           boolean NOT NULL DEFAULT true,
@@ -64,6 +75,13 @@ CREATE TABLE app_user (
   last_login_at  timestamptz,
   created_at     timestamptz NOT NULL DEFAULT now()
 );
+
+-- sku is declared before app_user (masters are ordered by dependency), so the
+-- provenance FK is attached here rather than inline. Found by running it:
+-- "relation app_user does not exist".
+ALTER TABLE sku
+  ADD CONSTRAINT sku_base_price_set_by_fkey
+  FOREIGN KEY (shopify_base_price_set_by) REFERENCES app_user(user_id);
 
 CREATE TABLE employee (
   employee_id      uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -228,3 +228,19 @@ documented, per CLAUDE.md section 4 ("Log decisions").
 | **R3** | A plain `migrate` on an empty database left **no `_local_dev_marker`**, so every later `--fresh` refused forever. The guard was right; the bootstrap path was incomplete. Migrate now marks any database it created from empty. | `packages/db/src/migrate.ts` |
 | **R4** | `pg_ctl -w start` **never returns on Windows**, and `spawnSync` blocks on stdio the server holds open, and `pg_ctl` passes its **console** to the server so a `timeout` wrapper's Ctrl-C killed the database mid-`CREATE DATABASE` (exit `0xC000013A`). Now spawns `postgres.exe` directly, detached, with a real protocol handshake for readiness rather than trusting the pid file. | `packages/db/src/local-pg.ts` |
 | **R5** | An append-only check on an **empty table passes vacuously** — a `FOR EACH ROW` trigger cannot fire on zero rows, which briefly read as a failing check when it was an empty fixture. All six tables now carry a row before being tested; 12/12 mutations blocked. | transcript + `seed-dev-fixture.ts` |
+
+---
+
+# Decisions taken 2026-08-21 — seventh pass
+
+| ID | Decision | Tier | Rationale |
+|---|---|---|---|
+| **D-81** | **O-02 resolved as a MECHANISM, not a list.** The admin fills Shopify base prices in the Master Data panel. `sku` gains `shopify_base_price_confirmed`, `shopify_base_price_set_by` and `shopify_base_price_set_at`; **attribution refuses to compute from an unconfirmed price.** The seeded ₹899 / ₹849 / ₹949 remain as visible SUGGESTIONS. | 3 → answered | The client's answer was "price will fill by admin in admin panel", which resolves *who* supplies the number but not *what happens meanwhile*. The seeded values were reverse-engineered from historical orders — they are guesses, and this column decides what a rep is paid. CLAUDE.md rule 1: never guess a money figure. Separating the number from its provenance means the admin sees a helpful starting point while no money is ever computed from an unverified guess. An unconfirmed price sends the order to the exception queue, where the admin confirms and retries — that firing is the workflow starting, not a defect. |
+| **D-82** | Re-running `db:seed` **never overwrites a confirmed price** with the inferred one. | 1 | Otherwise a routine seed would silently replace a real number an admin stood behind. Master data the admin owns must survive a seed. |
+
+## Defects found by running it (continued)
+
+| # | Defect | Where |
+|---|---|---|
+| **R6** | Adding `shopify_base_price_set_by uuid REFERENCES app_user(user_id)` inline to `sku` created a **forward reference** — masters are ordered by dependency and `sku` is declared before `app_user`. Postgres: *"relation app_user does not exist"*. The FK is now attached with `ALTER TABLE` after both exist. | `db/schema.sql` |
+| **R7** | The cluster killed by R4's Ctrl-C could **not recover** — "shutting down due to startup process failure" — and had to be destroyed and rebuilt. The detached-spawn fix prevents a recurrence; the damaged cluster could not be repaired. Worth knowing that a console signal to a Windows Postgres is not a clean stop. | `.pgdata` |

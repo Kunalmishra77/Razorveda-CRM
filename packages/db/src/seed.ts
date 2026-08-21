@@ -93,7 +93,11 @@ async function main(): Promise<void> {
          ON CONFLICT (sku_code) DO UPDATE SET
            product_name = EXCLUDED.product_name, line_id = EXCLUDED.line_id,
            variant = EXCLUDED.variant, pack_size = EXCLUDED.pack_size, mrp = EXCLUDED.mrp,
-           shopify_base_price = EXCLUDED.shopify_base_price,
+           -- Never overwrite a price an admin has confirmed: re-running the seed
+           -- must not quietly replace a real number with the inferred one (D-81).
+           shopify_base_price = CASE WHEN sku.shopify_base_price_confirmed
+                                     THEN sku.shopify_base_price
+                                     ELSE EXCLUDED.shopify_base_price END,
            usage_days = EXCLUDED.usage_days, name_aliases = EXCLUDED.name_aliases,
            updated_at = now()`,
         [

@@ -12,11 +12,13 @@ import {
 /**
  * Phase 1 exit criteria 5 and 6, plus the worked examples in docs/03 §4.
  *
- * Base prices are READ FROM db/seed/skus.csv, never hardcoded here. O-02 is still
- * open — the ₹899 / ₹849 / ₹949 clusters were reverse-engineered from the client's
- * order data — so when the client confirms the real numbers, the seed changes and
- * these tests follow it. A rupee amount typed into a test would silently become a
- * second source of truth for a money rule.
+ * Base prices are READ FROM db/seed/skus.csv, never hardcoded here. A rupee amount
+ * typed into a test would silently become a second source of truth for a money rule.
+ *
+ * O-02 is resolved as a MECHANISM: the admin fills prices in Master Data (D-81).
+ * The seeded ₹899 / ₹849 / ₹949 are reverse-engineered SUGGESTIONS, and
+ * `shopify_base_price_confirmed` is what separates a suggestion from a number that
+ * may decide someone's pay.
  */
 
 const seed = readFileSync(
@@ -55,10 +57,12 @@ const BC = bySku('BC-014');
 /** A Skinwise SKU that carries one. */
 const SW = bySku('SW-007');
 
+/** A cart line whose price an admin has CONFIRMED in Master Data (D-81). */
 const cartLine = (s: SeedSku, quantity = 1): AttributionLine => ({
   skuId: s.skuCode,
   quantity,
   shopifyBasePrice: s.basePrice,
+  shopifyBasePriceConfirmed: true,
   isUpsell: false,
 });
 
@@ -66,11 +70,12 @@ const upsellLine = (s: SeedSku, quantity = 1): AttributionLine => ({
   skuId: s.skuCode,
   quantity,
   shopifyBasePrice: s.basePrice,
+  shopifyBasePriceConfirmed: true,
   isUpsell: true,
 });
 
 describe('the seed still carries what these tests depend on', () => {
-  it('BC-014 and SW-007 have a Shopify base price (O-02, provisional)', () => {
+  it('BC-014 and SW-007 carry a suggested Shopify base price (O-02, unconfirmed)', () => {
     expect(BC.basePrice, 'BC-014 lost its shopify_base_price').not.toBeNull();
     expect(SW.basePrice, 'SW-007 lost its shopify_base_price').not.toBeNull();
     expect(BC.lineCode).toBe('BREAST_CARE');
@@ -100,7 +105,7 @@ describe('Phase 1 exit criterion 5 — Shopify upsell credit', () => {
       rule: 'UPSELL_DELTA',
       employeeCreditPercent: '100',
       finalValue: '2000.00',
-      lines: [{ skuId: 'X', quantity: 1, shopifyBasePrice: '500.00', isUpsell: false }],
+      lines: [{ skuId: 'X', quantity: 1, shopifyBasePrice: '500.00', shopifyBasePriceConfirmed: true, isUpsell: false }],
     });
     expect(r).toMatchObject({ companyBaseValue: '500.00', employeeCreditedValue: '1500.00' });
   });
@@ -151,6 +156,7 @@ describe('the F7 leak is unreachable, not merely discouraged', () => {
       skuId: 'BC-015',
       quantity: 1,
       shopifyBasePrice: null,
+      shopifyBasePriceConfirmed: false,
       isUpsell: false,
     };
     expect(() =>
@@ -169,7 +175,7 @@ describe('the F7 leak is unreachable, not merely discouraged', () => {
         rule: 'UPSELL_DELTA',
         employeeCreditPercent: '100',
         finalValue: '2500.00',
-        lines: [{ skuId: 'BC-015', quantity: 1, shopifyBasePrice: null, isUpsell: false }],
+        lines: [{ skuId: 'BC-015', quantity: 1, shopifyBasePrice: null, shopifyBasePriceConfirmed: false, isUpsell: false }],
       });
       expect.unreachable('should have thrown');
     } catch (e) {
@@ -198,7 +204,7 @@ describe('the F7 leak is unreachable, not merely discouraged', () => {
       rule: 'UPSELL_DELTA',
       employeeCreditPercent: '100',
       finalValue: '500.00',
-      lines: [{ skuId: 'X', quantity: 1, shopifyBasePrice: '899.00', isUpsell: false }],
+      lines: [{ skuId: 'X', quantity: 1, shopifyBasePrice: '899.00', shopifyBasePriceConfirmed: true, isUpsell: false }],
     });
     expect(r.companyBaseValue).toBe('500.00');
     expect(r.employeeCreditedValue).toBe('0.00');
@@ -309,5 +315,71 @@ describe('Phase 1 exit criterion 6 — product line revenue splits from lines (F
       { lineId: 'l1', lineValue: '0.01', productLine: 'SKINWISE' },
     ]);
     expect(revenue.get('SKINWISE')).not.toBe('0.00');
+  });
+});
+
+
+describe('an UNCONFIRMED base price cannot decide anyone credit (O-02, D-81)', () => {
+  it('REFUSES to compute from the inferred seed value', () => {
+    // The seeded 899 / 849 / 949 were reverse-engineered from the client's order
+    // data. They are a suggestion for the admin, not an input to payroll.
+    // CLAUDE.md rule 1: never guess a money figure.
+    expect(() =>
+      computeAttribution({
+        rule: 'UPSELL_DELTA',
+        employeeCreditPercent: '100',
+        finalValue: '3000.00',
+        lines: [{ ...cartLine(BC), shopifyBasePriceConfirmed: false }],
+      }),
+    ).toThrow(/UNCONFIRMED base price/);
+  });
+
+  it('names the SKU and points at Master Data', () => {
+    try {
+      computeAttribution({
+        rule: 'UPSELL_DELTA',
+        employeeCreditPercent: '100',
+        finalValue: '3000.00',
+        lines: [{ ...cartLine(BC), shopifyBasePriceConfirmed: false }],
+      });
+      expect.unreachable('should have thrown');
+    } catch (e) {
+      expect((e as Error).message).toContain('BC-014');
+      expect((e as Error).message).toContain('Master Data');
+    }
+  });
+
+  it('computes once an admin has confirmed the price', () => {
+    const r = computeAttribution({
+      rule: 'UPSELL_DELTA',
+      employeeCreditPercent: '100',
+      finalValue: '3000.00',
+      lines: [cartLine(BC)],
+    });
+    expect(r.companyBaseValue).toBe(`${BC.basePrice}.00`);
+  });
+
+  it('does not block an UPSELL line with an unconfirmed price', () => {
+    // Only committed cart lines set the company base. An upsell the rep added is
+    // priced at what she sold it for, so its base price is irrelevant.
+    const r = computeAttribution({
+      rule: 'UPSELL_DELTA',
+      employeeCreditPercent: '100',
+      finalValue: '3000.00',
+      lines: [cartLine(BC), { ...upsellLine(SW), shopifyBasePriceConfirmed: false }],
+    });
+    expect(r.companyBaseValue).toBe(`${BC.basePrice}.00`);
+  });
+
+  it('does not block FULL_CREDIT sources at all', () => {
+    // Meta Ads has no committed cart, so no base price is consulted and an
+    // unconfirmed one cannot block the order.
+    const r = computeAttribution({
+      rule: 'FULL_CREDIT',
+      employeeCreditPercent: '100',
+      finalValue: '1450.00',
+      lines: [{ ...cartLine(BC), shopifyBasePriceConfirmed: false }],
+    });
+    expect(r.employeeCreditedValue).toBe('1450.00');
   });
 });
