@@ -106,6 +106,25 @@ async function main(): Promise<void> {
       );
     }
 
+    // --- dev-only TOTP enrolment -----------------------------------------
+    //
+    // ADMIN and OWNER require 2FA, and evaluateLogin REFUSES an admin with no
+    // enrolled secret rather than waving them through (D-52). Correct — but it
+    // means a fresh install has nobody who can sign in.
+    //
+    // Production needs a real enrolment flow (scan a QR, confirm a code) and that
+    // is still to build. For local development the admins get a KNOWN secret so
+    // the console is reachable. This lives in seed:dev, never in the master seed,
+    // and seed:dev is refused against anything but a marked local database.
+    const DEV_TOTP_SECRET = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
+    const { rowCount: enrolled } = await c.query(
+      `UPDATE app_user SET totp_secret = $1
+        WHERE role IN ('ADMIN','OWNER') AND totp_secret IS NULL`,
+      [DEV_TOTP_SECRET],
+    );
+    console.log(`   dev TOTP enrolled for ${enrolled ?? 0} admin/owner account(s)`);
+    console.log(`   DEV ONLY secret: ${DEV_TOTP_SECRET}`);
+
     await c.query('COMMIT');
     console.log(`   ${a.full_name}: ${REP_A_LEADS} leads · ${b.full_name}: ${REP_B_LEADS} leads · pool: ${POOL_LEADS}`);
     console.log('seed:dev ok — fixture data, never for production');

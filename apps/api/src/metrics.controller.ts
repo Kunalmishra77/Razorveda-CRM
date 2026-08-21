@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { Public } from './auth/session.guard.js';
 import { METRICS, legacyMetrics, liveMetrics } from '@razorveda/metrics';
 
 /**
@@ -8,6 +9,7 @@ import { METRICS, legacyMetrics, liveMetrics } from '@razorveda/metrics';
  * variance report and must never reach an API response (N8, D-38) — returning
  * METRICS wholesale here would be a containment-test failure, which is the point.
  */
+@Public()
 @Controller('metrics')
 export class MetricsController {
   @Get('registry')

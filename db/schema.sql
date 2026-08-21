@@ -83,6 +83,27 @@ ALTER TABLE sku
   ADD CONSTRAINT sku_base_price_set_by_fkey
   FOREIGN KEY (shopify_base_price_set_by) REFERENCES app_user(user_id);
 
+-- Server-side sessions. JWTs alone cannot satisfy docs/05, which requires a
+-- single active session per employee and immediate revocation — a stateless
+-- token cannot be taken back. The access token carries `sid`; this row decides
+-- whether that sid is still allowed to act (D-54, D-55).
+--
+-- The refresh token itself is NEVER stored, only its SHA-256. A dump of this
+-- table must not let anyone resume a session.
+CREATE TABLE app_session (
+  session_id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id             uuid NOT NULL REFERENCES app_user(user_id) ON DELETE CASCADE,
+  refresh_token_hash  char(64) NOT NULL,
+  issued_at           timestamptz NOT NULL DEFAULT now(),
+  last_seen_at        timestamptz NOT NULL DEFAULT now(),
+  revoked_at          timestamptz,
+  revoked_reason      text,
+  device_fingerprint  text,
+  ip_address          inet
+);
+CREATE INDEX ix_session_user_active ON app_session(user_id) WHERE revoked_at IS NULL;
+CREATE UNIQUE INDEX ux_session_refresh ON app_session(refresh_token_hash);
+
 CREATE TABLE employee (
   employee_id      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id          uuid UNIQUE REFERENCES app_user(user_id),

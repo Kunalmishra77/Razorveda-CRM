@@ -108,12 +108,87 @@ DO $$
 DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['ingestion_batch','staging_row','column_mapping_template',
-                           'audit_log','pii_access_log','incentive_slab','app_user']
+                           'incentive_slab','app_user']
   LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY;', t);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY;', t);
     EXECUTE format('CREATE POLICY %I_admin_only ON %I FOR ALL TO app_role
                       USING (is_admin()) WITH CHECK (is_admin());', t, t);
+  END LOOP;
+END $$;
+
+-- ─── authentication: the one path that runs with no user context ─────────
+--
+-- Logging in must read app_user, but app_user is admin-only and a user who is
+-- signing in HAS NO ROLE YET. The lookup returned zero rows, so every password
+-- looked wrong — including the right one. Found by running it.
+--
+-- The fix is a narrow SECURITY DEFINER function, NOT opening the table. It runs
+-- as its owner, returns only the columns authentication needs, and is the single
+-- controlled doorway into a table that holds password hashes. Widening app_user
+-- itself would have exposed every hash to any query app_role can make.
+CREATE OR REPLACE FUNCTION auth_lookup(p_email text)
+RETURNS TABLE (
+  user_id       uuid,
+  password_hash text,
+  role          user_role,
+  is_locked     boolean,
+  locked_reason text,
+  totp_secret   text,
+  full_name     text,
+  shift_start   text,
+  shift_end     text
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT u.user_id, u.password_hash, u.role, u.is_locked, u.locked_reason, u.totp_secret,
+         e.full_name, e.shift_start::text, e.shift_end::text
+    FROM app_user u
+    LEFT JOIN employee e ON e.user_id = u.user_id
+   WHERE lower(u.email) = lower(p_email);
+$$;
+GRANT EXECUTE ON FUNCTION auth_lookup(text) TO app_role;
+
+-- Sessions are created and checked before any user context exists, so they carry
+-- their own policy rather than sitting in the admin-only loop. A row holds a
+-- refresh token HASH, never the token, so read access buys an attacker nothing —
+-- and the API is the only client that can reach this table at all.
+ALTER TABLE app_session ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_session FORCE  ROW LEVEL SECURITY;
+CREATE POLICY app_session_all ON app_session FOR ALL TO app_role
+  USING (true) WITH CHECK (true);
+
+-- ─── append-only logs: READ is admin-only, WRITE is open ──────────────────
+--
+-- These were in the admin-only loop above, and that was wrong in two ways that
+-- only showed up when the code ran.
+--
+--   audit_log      a LOGIN ATTEMPT has no session yet, so is_admin() is false and
+--                  the attempt could not be recorded. An audit log that refuses
+--                  the writes it exists to capture is not an audit log — and a
+--                  FAILED login by an unknown address is exactly the row you most
+--                  want kept.
+--
+--   pii_access_log docs/05 requires every copy-number action to write a row, and
+--                  the people copying numbers are REPS. Admin-only INSERT would
+--                  have silently disabled the copy-velocity lock, which is the
+--                  main anti-exfiltration control in the system.
+--
+-- Reading stays admin-only, which is the half that protects anything. Forging a
+-- row is not a practical concern: app_role has no SQL access of its own, and
+-- actor_id is set server-side from the session, never from a request body.
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['audit_log','pii_access_log']
+  LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY;', t);
+    EXECUTE format('ALTER TABLE %I FORCE  ROW LEVEL SECURITY;', t);
+    EXECUTE format('CREATE POLICY %I_read  ON %I FOR SELECT TO app_role USING (is_admin());', t, t);
+    EXECUTE format('CREATE POLICY %I_write ON %I FOR INSERT TO app_role WITH CHECK (true);', t, t);
   END LOOP;
 END $$;
 

@@ -144,25 +144,41 @@ export async function start(timeoutMs = 30_000): Promise<void> {
  * "not yet", not "broken" — keep waiting.
  */
 async function acceptsConnections(): Promise<boolean> {
-  const client = new pg.Client({
-    connectionString: superuserUrl('postgres'),
-    connectionTimeoutMillis: 2000,
+  // Raw StartupMessage rather than pg.Client.
+  //
+  // The driver signals connection failure as an EVENT on the client as well as a
+  // rejected promise, and the event fires from the socket stream after the client
+  // has been discarded — so it escapes try/catch AND an attached listener, and
+  // crashed `pg:start` with the very 57P03 the probe existed to tolerate.
+  //
+  // A hand-rolled startup message cannot do that. The server answers 'R'
+  // (authentication request) when it is ready to talk, or 'E' (error response)
+  // while it is still starting up or recovering. One byte, no driver, no events.
+  return new Promise((resolve) => {
+    const socket = connect({ host: '127.0.0.1', port: LOCAL_PG_PORT });
+    let settled = false;
+    const done = (ready: boolean): void => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(ready);
+    };
+
+    socket.setTimeout(2000);
+    socket.on('connect', () => {
+      const params = `user\0${SUPERUSER}\0database\0postgres\0\0`;
+      const body = Buffer.from(params, 'utf8');
+      const message = Buffer.alloc(8 + body.length);
+      message.writeInt32BE(message.length, 0);
+      message.writeInt32BE(196608, 4); // protocol 3.0
+      body.copy(message, 8);
+      socket.write(message);
+    });
+    socket.on('data', (chunk: Buffer) => done(String.fromCharCode(chunk[0] ?? 0) === 'R'));
+    socket.on('timeout', () => done(false));
+    socket.on('error', () => done(false));
+    socket.on('close', () => done(false));
   });
-  // pg.Client emits 'error' as an EVENT, not only as a rejected promise. With no
-  // listener attached, Node treats it as unhandled and throws straight past the
-  // try/catch below — which is exactly what happened: a readiness probe against a
-  // still-recovering server crashed `pg:start` with the very error it was written
-  // to tolerate.
-  client.on('error', () => undefined);
-  try {
-    await client.connect();
-    await client.query('SELECT 1');
-    return true;
-  } catch {
-    return false;
-  } finally {
-    await client.end().catch(() => undefined);
-  }
 }
 
 /** Socket-level check, kept for the port probe in diagnostics. */

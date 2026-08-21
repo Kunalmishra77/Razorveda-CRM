@@ -16,12 +16,18 @@ import { withRlsContext, type RlsSession } from '../db/rls-context.js';
  * thing is one transaction, so a partial assignment cannot exist.
  */
 
+/**
+ * Every field is explicitly `| undefined`. Under `exactOptionalPropertyTypes` an
+ * optional property does not accept an explicit `undefined`, and query strings
+ * produce exactly that. Declaring it is honest about what arrives rather than
+ * making every caller launder its own input.
+ */
 export interface PoolFilter {
-  readonly sourceId?: string;
-  readonly state?: string;
-  readonly productLine?: string;
+  readonly sourceId?: string | undefined;
+  readonly state?: string | undefined;
+  readonly productLine?: string | undefined;
   /** Only leads older than this many hours. Drives "assign the ageing ones first". */
-  readonly minAgeHours?: number;
+  readonly minAgeHours?: number | undefined;
 }
 
 export interface BulkAssignInput {
@@ -29,7 +35,7 @@ export interface BulkAssignInput {
   readonly filter: PoolFilter;
   readonly toEmployeeId: string;
   /** Present when the admin proceeded past a pre-assign warning. Logged, never blocked. */
-  readonly overrideReason?: string;
+  readonly overrideReason?: string | undefined;
 }
 
 export interface BulkAssignResult {
