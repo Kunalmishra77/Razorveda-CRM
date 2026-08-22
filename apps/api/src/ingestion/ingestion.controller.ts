@@ -8,6 +8,7 @@ import {
   type ColumnCheck, type TargetField, type TypeContract,
 } from '@razorveda/shared';
 import { withRlsContext } from '../db/rls-context.js';
+import { validateUpload } from '../security/upload-guard.js';
 import { resolveIdentity, type Candidate, type MatchedOn } from '../customers/resolve-identity.js';
 import { AdminGuard, type AuthedRequest } from '../auth/session.guard.js';
 import { UploadService, DuplicateFileError } from './upload.service.js';
@@ -44,6 +45,15 @@ export class IngestionController {
     const session = request.session!;
 
     const bytes = new Uint8Array(Buffer.from(parsed.data.contentBase64, 'base64'));
+
+    // Refuse at the door, in words the admin can act on. Without this an XLSX
+    // reaches the column-shift detector as thousands of replacement characters
+    // and is rejected with a message about type contracts — technically correct
+    // and completely unhelpful to someone who just wants to know why their file
+    // did not import.
+    const verdict = validateUpload(bytes, parsed.data.fileName);
+    if (!verdict.ok) throw new BadRequestException(verdict.reason);
+
     const text = Buffer.from(bytes).toString('utf8');
     const lines = text.split(/\r?\n/).filter((l) => l.trim() !== '');
     if (lines.length < 2) {
