@@ -2,6 +2,7 @@ import { Injectable, Inject, BadRequestException } from '@nestjs/common';
 import pgLib from 'pg';
 import type { Pool, PoolClient } from 'pg';
 import { withRlsContext, type RlsSession } from '../db/rls-context.js';
+import { validateSlabs } from './slab-rules.js';
 
 /**
  * Master Data (docs/07 §6) — the screens an admin uses to configure the system.
@@ -207,28 +208,12 @@ export class MasterDataService {
   ) {
     if (slabs.length === 0) throw new BadRequestException('Give at least one slab.');
 
-    // The bands must cover the range without a hole. A gap makes computeIncentive
-    // refuse (D-153), which is right at calculation time and much better caught
-    // here, while someone is looking at the numbers.
-    const sorted = [...slabs].sort((a, b) => Number(a.minValue) - Number(b.minValue));
-    for (let i = 0; i < sorted.length - 1; i += 1) {
-      const upper = sorted[i]!.maxValue;
-      if (upper === null) {
-        throw new BadRequestException('Only the highest slab may have an open top end.');
-      }
-      if (Number(upper) !== Number(sorted[i + 1]!.minValue)) {
-        throw new BadRequestException(
-          `There is a gap between ₹${upper} and ₹${sorted[i + 1]!.minValue}. A rep landing in ` +
-            `it would have no slab at all, and her statement would refuse to calculate.`,
-        );
-      }
-    }
-    if (Number(sorted[0]!.minValue) !== 0) {
-      throw new BadRequestException(
-        `The lowest slab must start at 0, or a rep below ₹${sorted[0]!.minValue} has no slab. ` +
-          `Use 0% if nothing is payable at that level.`,
-      );
-    }
+    // The rule lives in slab-rules.ts, where it can be tested without a database.
+    // A mutation check proved it was untested here: deleting the gap check broke
+    // nothing, because nothing could reach it without an admin session.
+    const verdict = validateSlabs(slabs);
+    if (!verdict.ok) throw new BadRequestException(verdict.message);
+    const sorted = verdict.sorted;
 
     return this.write(session, async (client) => {
       await client.query(

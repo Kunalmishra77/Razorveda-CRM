@@ -137,6 +137,40 @@ describe('a period that goes backwards', () => {
   });
 });
 
+describe('rounding happens once — through computeIncentive, not just scaleMoney', () => {
+  /**
+   * A mutation check found this gap. Replacing the single chained multiply inside
+   * `computeIncentive` with two rounded steps broke NOTHING: the worked example
+   * above uses 150,000 x 2.50% x 1.15, and those round identically either way.
+   *
+   * The `scaleMoney` tests below prove the primitive is right. They said nothing
+   * about whether the incentive engine USES it correctly, which is the part that
+   * reaches a payslip.
+   */
+  it('catches a double round inside the engine itself', () => {
+    // 333.33 x 3.33% x 1.15 -> 12.76 rounded once, 12.77 rounded twice.
+    const d = computeIncentive({
+      realisedCredited: '333.33',
+      ordersDelivered: 100,
+      ordersRto: 2,
+      prepaidRatio: '0.0000',
+      repeatOrders: 0,
+      lineIds: [],
+      slabs: [{ minValue: '0', maxValue: null, percent: '3.33', isProvisional: false }],
+      modifiers: [{
+        kind: 'DELIVERY_QUALITY', thresholdMin: '0.0000', thresholdMax: '0.0500',
+        lineId: null, value: '1.15', isProvisional: false,
+      }],
+    });
+    expect(d.effectivePercent).toBe('3.33');
+    expect(d.deliveryQualityMultiplier).toBe('1.15');
+    expect(d.payable).toBe('12.76');
+    // Stated as the wrong answer, so the intent survives a refactor: 12.77 is
+    // what two rounding steps produce, and it must never be what a rep is paid.
+    expect(d.payable).not.toBe('12.77');
+  });
+});
+
 describe('rounding happens once', () => {
   it('differs from rounding twice — with the cases that prove it', () => {
     // Not hypothetical. These are real divergences, found by searching for them:
