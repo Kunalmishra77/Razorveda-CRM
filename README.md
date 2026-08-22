@@ -198,6 +198,88 @@ days especially. Every per-day figure is marked provisional until the working ca
 
 ---
 
+## Backup and restore
+
+**An untested backup is not a backup.** Run the drill monthly:
+
+```bash
+npm run db:restore-drill
+```
+
+It dumps the live database, restores it into a scratch database, refreshes the
+materialised views, and then verifies seven things — including whether row-level
+security still works, by counting the same table as the owner and as a rep.
+
+### Taking a backup
+
+```bash
+pg_dump -h <host> -p <port> -U razorveda_migrator -d razorveda         -Fc --no-owner -f razorveda-$(date +%Y%m%d-%H%M).dump
+```
+
+`-Fc` is the custom format: compressed, and `pg_restore` can be selective if a
+partial recovery is ever needed. A plain SQL dump cannot.
+
+**Do not add `--no-privileges`.** Grants are how `app_role` reaches a table at
+all; RLS policies decide which *rows* it sees. A dump without grants restores
+every policy and leaves the application unable to read anything.
+
+### Restoring
+
+```bash
+createdb -h <host> -U razorveda_migrator razorveda_restored
+pg_restore -h <host> -U razorveda_migrator -d razorveda_restored --no-owner backup.dump
+
+# NOT optional. pg_dump stores a matview's definition, never its contents, so a
+# restored database has six EMPTY ones. Every report reads them, and an empty
+# matview returns zero rows rather than failing — the morning after a restore
+# every report would show a quiet month with nothing saying the data was missing.
+psql -h <host> -U razorveda_migrator -d razorveda_restored -c "DO \$\$ DECLARE m record; BEGIN
+     FOR m IN SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+               WHERE n.nspname='public' AND c.relkind='m'
+     LOOP EXECUTE format('REFRESH MATERIALIZED VIEW %I', m.relname); END LOOP;
+   END \$\$;"
+```
+
+### Restoring onto a FRESH machine
+
+`pg_dump` is per-database. `app_role` and `razorveda_app` are cluster-level and
+are **not** in the dump. On a new cluster, restore the roles first:
+
+```bash
+pg_dumpall -h <host> -U razorveda_migrator --roles-only -f roles.sql   # on the source
+psql -h <new-host> -U postgres -f roles.sql                            # on the target
+```
+
+Skip this and the restore fails on every `GRANT ... TO app_role`.
+
+### Version skew
+
+Use a `pg_dump` matching the server major version. Dumping a PostgreSQL 16
+server with `pg_dump` 18 works, but emits `SET transaction_timeout = 0`, which 16
+does not recognise. It is harmless — a session setting that affects no data — and
+that is the problem: it trains an operator to ignore a warning that might not be
+harmless next time.
+
+### What the drill verifies, and why each one
+
+| Check | Why it is there |
+|---|---|
+| every table restored | The obvious one. |
+| every row restored | Compared table by table, not sampled. |
+| **row-level security survived** | A restore that loses RLS starts cleanly and shows every rep every customer. Silent, total exposure. |
+| **isolation actually works** | Policies *existing* is not policies *working*. Counted as the owner and as a rep; the rep must see strictly fewer rows. |
+| security functions survived | Losing a SECURITY DEFINER doorway exposes nothing but silently disables login, 2FA enrolment or the velocity lock. |
+| append-only triggers survived | Without them an immutable ledger becomes editable, and a March report stops being reproducible in December. |
+| materialised views populated | See above — the quiet-month failure. |
+
+### RPO and RTO
+
+The drill prints its own timings. On development data (631 rows) a full cycle is
+**~9 seconds**. That is evidence the procedure works, **not** evidence the 4-hour
+RTO in criterion 4 is met — re-measure at the client's volume, on the VPS, before
+claiming it. RPO depends on backup *frequency*, which is a Coolify scheduling
+decision and is not set by anything in this repo.
+
 ## Troubleshooting
 
 **`seed` refuses to run** — see "Two things" above. Run `npm run db:migrate -- --fresh`.

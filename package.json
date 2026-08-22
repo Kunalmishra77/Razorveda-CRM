@@ -26,7 +26,8 @@
     "pg:start": "npm run pg:start -w @razorveda/db",
     "pg:stop": "npm run pg:stop -w @razorveda/db",
     "pg:destroy": "npm run pg:destroy -w @razorveda/db",
-    "db:seed:dev": "npm run seed:dev -w @razorveda/db --"
+    "db:seed:dev": "npm run seed:dev -w @razorveda/db --",
+    "db:restore-drill": "tsx packages/db/src/restore-drill.ts"
   },
   "devDependencies": {
     "@types/node": "^22.5.0",
