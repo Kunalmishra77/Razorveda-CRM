@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, Param, Query, Req, Res, UseGuards, BadRequestException } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Inject, Param, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { AdminGuard, type AuthedRequest } from '../auth/session.guard.js';
 import { ReportsService, parsePeriod } from './reports.service.js';
@@ -89,6 +89,21 @@ export class ReportsController {
         const r = await this.reports.dispatchStatus(session, period);
         return { rows: r.movement, stuck: r.stuck };
       }
+      case 'weekly-team-pack':
+        return { rows: await this.reports.weeklyTeamPack(session, period) };
+      case 'source-performance':
+        return { rows: await this.reports.sourcePerformance(session, period) };
+      case 'assignment-quality':
+        return {
+          rows: await this.reports.assignmentQuality(session, period),
+          caveats: [
+            'Yield is realised value PER LEAD, not a conversion count. A rep who converts fewer leads at higher value is better at that source.',
+          ],
+        };
+      case 'target-comparison': {
+        const r = await this.reports.targetComparison(session, period);
+        return { rows: r.rows, workingDays: r.workingDays, caveats: r.caveats };
+      }
       case 'management-one-pager': {
         const r = await this.reports.managementOnePager(session, period);
         return { rows: [r.totals], topRep: r.topRep, topProduct: r.topProduct };
@@ -107,4 +122,8 @@ const TITLES: Readonly<Record<string, string>> = {
   'lead-pool': 'Daily Lead Pool',
   'dispatch-status': 'Daily Dispatch and Status',
   'management-one-pager': 'Management One-Pager',
+  'weekly-team-pack': 'Weekly Team Pack',
+  'source-performance': 'Source Performance',
+  'assignment-quality': 'Assignment Quality',
+  'target-comparison': 'RTO-Adjusted Target Comparison',
 };

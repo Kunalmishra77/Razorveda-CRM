@@ -81,13 +81,19 @@ beforeAll(async () => {
   // Two orders for one rep: one delivered, one delivered-then-returned. The
   // second is the shape that exposed the fan-out, because it carries three
   // ledger rows rather than two.
+  //
+  // The order number carries the run's lead id, so each run gets its own pair.
+  // The first version used fixed numbers, cancelled them in afterAll, and then
+  // ON CONFLICT DO NOTHING silently skipped recreating them — so the test passed
+  // once and afterwards asserted over an empty set. A guard that stops guarding
+  // after its first run is worse than no guard.
   for (const [n, outcome] of [['A', 'DELIVERED'], ['B', 'RTO']] as const) {
     const { rows: [o] } = await pool.query<{ order_id: string }>(
       `INSERT INTO "order" (order_number, customer_id, lead_id, source_id,
                             booked_by_employee_id, order_date, final_value,
                             company_base_value, payment_mode, prepaid_amount, cod_amount,
                             current_status, delivered_date, rto_date)
-       SELECT 'SCORE-PROBE-' || $2, $1, $5, source_id, $3, CURRENT_DATE, 1000, 0,
+       SELECT 'SCORE-PROBE-' || $2 || '-' || left($5::text, 8), $1, $5::uuid, source_id, $3, CURRENT_DATE, 1000, 0,
               'COD', 0, 1000, $4::order_status, CURRENT_DATE,
               CASE WHEN $4 = 'RTO' THEN CURRENT_DATE ELSE NULL END
          FROM lead_source ORDER BY code LIMIT 1
@@ -181,6 +187,12 @@ describe('the scored counts match the orders that actually exist', () => {
                 count(*) FILTER (WHERE o.current_status IN ('RTO','RETURNED'))::text AS rto
            FROM "order" o
           WHERE o.booked_by_employee_id IS NOT NULL
+            -- Mirrors EES's own scope. It reaches the lead source by joining the
+            -- lead table, so an order with no lead is invisible to scoring
+            -- (D-165) -- a documented gap, not a fan-out. Counting those here
+            -- would fail this guard for the wrong reason and hide the one it
+            -- exists for. (No backticks: this SQL sits in a JS template literal.)
+            AND o.lead_id IS NOT NULL
             AND date_trunc('month', coalesce(o.delivered_date, o.rto_date))
                 = date_trunc('month', $1::date)
           GROUP BY o.booked_by_employee_id
@@ -221,6 +233,7 @@ describe('the scored counts match the orders that actually exist', () => {
             SELECT 1 FROM "order" o
              WHERE o.booked_by_employee_id = s.employee_id
                AND o.current_status IN ('RTO','RETURNED')
+               AND o.lead_id IS NOT NULL
                AND date_trunc('month', o.rto_date) = date_trunc('month', $1::date)
           )`,
       [today],
