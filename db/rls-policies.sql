@@ -112,7 +112,10 @@ DO $$
 DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['ingestion_batch','staging_row','column_mapping_template',
-                           'incentive_slab','app_user']
+                           -- Both halves of the incentive scheme. A rep who could
+                           -- read the slabs could work out every colleague's
+                           -- payable from figures she can already see.
+                           'incentive_slab','incentive_modifier','app_user']
   LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY;', t);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY;', t);

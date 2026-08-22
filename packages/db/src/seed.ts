@@ -185,6 +185,30 @@ async function main(): Promise<void> {
       );
     }
 
+    // ── incentive modifiers ──────────────────────────────────────────────
+    // docs/03 section 6: "all slabs and modifiers live in tables, versioned,
+    // admin-editable. Never hardcoded." These are the PROPOSALS from that section
+    // and are seeded `is_provisional = true`, so every figure computed from them
+    // is labelled provisional until O-09 is answered. No SPIF is seeded: a
+    // product promotion is a decision with a date, not a default.
+    for (const r of readSeed('incentive_modifiers.csv')) {
+      await client.query(
+        `INSERT INTO incentive_modifier (kind, threshold_min, threshold_max, line_id,
+                                         value, effective_from, note, is_provisional)
+         SELECT $1::incentive_modifier_kind, $2, $3,
+                (SELECT line_id FROM product_line WHERE code = $4), $5, $6, $7, true
+          WHERE NOT EXISTS (
+            SELECT 1 FROM incentive_modifier
+             WHERE kind = $1::incentive_modifier_kind
+               AND threshold_min IS NOT DISTINCT FROM $2
+               AND effective_from = $6)`,
+        [
+          r['kind'], asNumber(r['threshold_min']), asNumber(r['threshold_max']),
+          r['line_code'] || null, asNumber(r['value']), r['effective_from'], r['note'],
+        ],
+      );
+    }
+
     // ── users and employees ──────────────────────────────────────────────
     // 13 rows: 1 OWNER, 3 ADMIN, 9 EMPLOYEE. Roster is provisional pending O-01 (D-19).
     // Parameters are pinned in @razorveda/shared so a library swap cannot change

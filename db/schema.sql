@@ -443,8 +443,42 @@ CREATE TABLE incentive_slab (
   max_value    numeric(12,2),
   percent      numeric(5,2) NOT NULL,
   effective_from date NOT NULL,
-  effective_to   date
+  effective_to   date,
+  -- O-09: the values in docs/03 section 6 are PROPOSALS, not the client's scheme.
+  -- The flag travels with the row so every figure computed from it can say so.
+  -- An incentive statement that looks authoritative and is not gets paid, and the
+  -- correction is a conversation about money that has already been promised.
+  is_provisional boolean NOT NULL DEFAULT true
 );
+
+-- The four modifiers from docs/03 section 6. In tables, versioned, admin-editable,
+-- "never hardcoded" -- so they need somewhere to live rather than constants in a
+-- service. One table because they share a shape: a condition, a value, a window.
+CREATE TYPE incentive_modifier_kind AS ENUM (
+  'DELIVERY_QUALITY',   -- multiplies the payable; RTO% banded
+  'PREPAID_BONUS',      -- adds percentage points when prepaid ratio clears a floor
+  'PRODUCT_SPIF',       -- adds percentage points on one product line
+  'REPEAT_BONUS'        -- flat rupees per qualifying order
+);
+
+CREATE TABLE incentive_modifier (
+  modifier_id    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind           incentive_modifier_kind NOT NULL,
+  -- Inclusive lower bound, exclusive upper, both optional. Holds an RTO band, a
+  -- prepaid-ratio floor, or a Buyer Fq threshold depending on kind.
+  threshold_min  numeric(10,4),
+  threshold_max  numeric(10,4),
+  -- Which product line a SPIF applies to. NULL means every line.
+  line_id        uuid REFERENCES product_line(line_id),
+  -- Multiplier for DELIVERY_QUALITY, percentage points for the bonuses,
+  -- rupees for REPEAT_BONUS. The kind decides which, and the engine asserts it.
+  value          numeric(10,4) NOT NULL,
+  effective_from date NOT NULL,
+  effective_to   date,
+  is_provisional boolean NOT NULL DEFAULT true,
+  note           text
+);
+CREATE INDEX ix_modifier_active ON incentive_modifier(kind, effective_from);
 
 CREATE TABLE employee_score_daily (
   employee_id            uuid NOT NULL REFERENCES employee(employee_id),

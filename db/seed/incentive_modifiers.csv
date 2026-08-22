@@ -1,0 +1,6 @@
+kind,threshold_min,threshold_max,line_code,value,effective_from,note
+DELIVERY_QUALITY,0,0.05,,1.15,2026-08-01,RTO under 5% — rewards protecting margin
+DELIVERY_QUALITY,0.05,0.20,,1.00,2026-08-01,RTO 5-20% — neutral band
+DELIVERY_QUALITY,0.20,,,0.75,2026-08-01,RTO over 20% — prices in margin destruction
+PREPAID_BONUS,0.30,,,0.50,2026-08-01,Prepaid ratio over 30% — attacks the RTO root cause
+REPEAT_BONUS,3,,,100.00,2026-08-01,Buyer Fq 3 or more — rewards lifetime value

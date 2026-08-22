@@ -50,6 +50,16 @@ export const LedgerEntryType = {
   CLAWBACK: 'CLAWBACK', ADJUSTMENT: 'ADJUSTMENT', MANUAL_OVERRIDE: 'MANUAL_OVERRIDE',
 } as const;
 
+/**
+ * The four levers in docs/03 §6. Values live in `incentive_modifier`, versioned
+ * and admin-editable — "never hardcoded" — so this enum names the KINDS, not the
+ * numbers. The numbers are O-09 and are seeded provisional.
+ */
+export const IncentiveModifierKind = {
+  DELIVERY_QUALITY: 'DELIVERY_QUALITY', PREPAID_BONUS: 'PREPAID_BONUS',
+  PRODUCT_SPIF: 'PRODUCT_SPIF', REPEAT_BONUS: 'REPEAT_BONUS',
+} as const;
+
 export const ActivityType = {
   CALL: 'CALL', WHATSAPP: 'WHATSAPP', SMS: 'SMS', NOTE: 'NOTE',
   STATUS_CHANGE: 'STATUS_CHANGE', ORDER: 'ORDER', SYSTEM: 'SYSTEM',
@@ -90,6 +100,7 @@ export const PG_ENUM_NAMES = {
   OrderStatus: 'order_status',
   AttributionRule: 'attribution_rule',
   LedgerEntryType: 'ledger_entry_type',
+  IncentiveModifierKind: 'incentive_modifier_kind',
   ActivityType: 'activity_type',
   DispositionCategory: 'disposition_cat',
   BatchStatus: 'batch_status',
@@ -100,8 +111,8 @@ export const PG_ENUM_NAMES = {
 
 export const ALL_ENUMS = {
   UserRole, EmployeeStatus, CustomerType, BuyerStage, IdentifierType, PaymentMode,
-  OrderStatus, AttributionRule, LedgerEntryType, ActivityType, DispositionCategory,
-  BatchStatus, RowStatus, AssignMethod, LeadTemperature,
+  OrderStatus, AttributionRule, LedgerEntryType, IncentiveModifierKind, ActivityType,
+  DispositionCategory, BatchStatus, RowStatus, AssignMethod, LeadTemperature,
 } as const;
 
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];
@@ -113,6 +124,7 @@ export type PaymentMode = (typeof PaymentMode)[keyof typeof PaymentMode];
 export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
 export type AttributionRule = (typeof AttributionRule)[keyof typeof AttributionRule];
 export type LedgerEntryType = (typeof LedgerEntryType)[keyof typeof LedgerEntryType];
+export type IncentiveModifierKind = (typeof IncentiveModifierKind)[keyof typeof IncentiveModifierKind];
 export type ActivityType = (typeof ActivityType)[keyof typeof ActivityType];
 export type DispositionCategory = (typeof DispositionCategory)[keyof typeof DispositionCategory];
 export type BatchStatus = (typeof BatchStatus)[keyof typeof BatchStatus];

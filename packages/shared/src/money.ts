@@ -75,6 +75,40 @@ export function percentOfMoney(amount: string, percent: string): string {
   return fromScaled(negative ? -result : result);
 }
 
+/**
+ * An amount scaled by a chain of decimal multipliers, with ONE rounding at the end.
+ *
+ * `percentOfMoney` rounds to paise on every call, which is right for a single
+ * step and wrong for a chain. The incentive payable is base × percent × delivery
+ * multiplier, and rounding between the terms means a rep is paid a different
+ * number depending on how they were grouped — the exact defect the metric
+ * dictionary's "exact arithmetic, round once at render" rule exists to prevent.
+ *
+ * Each multiplier keeps its own precision: '1.15' and '0.0725' are exact here,
+ * not approximations, because each is parsed to an integer over a power of ten
+ * rather than a float. Pass '0.01' to turn a percentage into a fraction.
+ */
+export function scaleMoney(amount: string, multipliers: readonly string[]): string {
+  let numerator = toScaled(amount);
+  let denominator = 1n;
+
+  for (const m of multipliers) {
+    if (!/^-?\d+(\.\d+)?$/.test(m)) throw new Error(`not a decimal multiplier: ${m}`);
+    const [whole, fraction = ''] = m.split('.');
+    numerator *= BigInt(`${whole}${fraction}`);
+    denominator *= 10n ** BigInt(fraction.length);
+  }
+
+  // Half-up on the magnitude, so -0.005 and 0.005 round symmetrically. Banker's
+  // rounding would be defensible too, but half-up is what an accountant checking
+  // this by hand will do.
+  const negative = numerator < 0n;
+  const abs = negative ? -numerator : numerator;
+  let result = abs / denominator;
+  if ((abs % denominator) * 2n >= denominator) result += 1n;
+  return fromScaled(negative ? -result : result);
+}
+
 export const sumMoney = (values: readonly string[]): string =>
   fromScaled(values.reduce((acc, v) => acc + toScaled(v), 0n));
 
