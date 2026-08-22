@@ -18,7 +18,7 @@
     "db:seed": "npm run seed -w @razorveda/db --",
     "db:verify": "npm run verify -w @razorveda/db",
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "tsc -b --pretty",
+    "typecheck": "tsc --noEmit -p packages/shared/tsconfig.json && tsc --noEmit -p packages/metrics/tsconfig.json && tsc --noEmit -p packages/db/tsconfig.json && tsc --noEmit -p apps/api/tsconfig.json && tsc --noEmit -p apps/worker/tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write .",
     "dev": "concurrently -n api,web,worker -c cyan,magenta,yellow \"npm run dev -w @razorveda/api\" \"npm run dev -w @razorveda/web\" \"npm run dev -w @razorveda/worker\"",

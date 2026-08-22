@@ -28,6 +28,9 @@ import { ClosePackService } from './reports/close-pack.service.js';
 import { ReportsController } from './reports/reports.controller.js';
 import { DigestsService } from './notifications/digests.service.js';
 import { DigestsController } from './notifications/digests.controller.js';
+import { SecurityConsoleService } from './security/console.service.js';
+import { OffboardingService } from './security/offboarding.service.js';
+import { SecurityController } from './security/security.controller.js';
 import { ActivityService } from './activity/activity.service.js';
 import { createAppPool } from './db/pool.js';
 import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
@@ -55,6 +58,7 @@ import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
     EesController,
     ReportsController,
     DigestsController,
+    SecurityController,
   ],
   providers: [
     { provide: pg.Pool, useFactory: (): pg.Pool => createAppPool() },
@@ -86,6 +90,8 @@ import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
     { provide: ReportsService, useFactory: (pool: pg.Pool) => new ReportsService(pool), inject: [pg.Pool] },
     { provide: ExportService, useFactory: (pool: pg.Pool) => new ExportService(pool), inject: [pg.Pool] },
     { provide: DigestsService, useFactory: (pool: pg.Pool) => new DigestsService(pool), inject: [pg.Pool] },
+    { provide: SecurityConsoleService, useFactory: (pool: pg.Pool) => new SecurityConsoleService(pool), inject: [pg.Pool] },
+    { provide: OffboardingService, useFactory: (pool: pg.Pool) => new OffboardingService(pool), inject: [pg.Pool] },
     {
       provide: ClosePackService,
       useFactory: (pool: pg.Pool, incentive: IncentiveService, reports: ReportsService) =>
