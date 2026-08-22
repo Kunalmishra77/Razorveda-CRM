@@ -2,6 +2,7 @@ import { Body, Controller, Inject, Post, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
 import { AdminGuard, type AuthedRequest } from '../auth/session.guard.js';
 import { RepeatService } from './repeat.service.js';
+import { FollowupService } from './followup.service.js';
 
 /**
  * Running the repeat-purchase engine (Phase 3 deliverable 5).
