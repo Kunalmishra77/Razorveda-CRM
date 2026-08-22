@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Post, Req, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Post, Req } from '@nestjs/common';
 import pgLib from 'pg';
 import type { Pool } from 'pg';
 import { z } from 'zod';
@@ -157,12 +157,33 @@ export class WorklistController {
     });
   }
 
-  /** Log a contact attempt. Disposition mandatory, enforced server-side (D-77). */
+  /**
+   * Log a contact attempt. Disposition mandatory, enforced server-side (D-77).
+   *
+   * STATUS CODES MATTER HERE, and they were wrong. This returned HTTP 201 Created
+   * for every refusal — including "that lead was not found", which is what a rep
+   * gets when she posts against a lead RLS will not show her. Found by the Phase 5
+   * adversarial review: the security behaviour was correct (nothing was written,
+   * nothing leaked) but any client trusting the status code would record a call
+   * that does not exist. The web UI happened to check the body as well, so no
+   * user ever saw it; a second client would not have been so lucky.
+   *
+   * The split is principled rather than uniform:
+   *   400 — genuine field validation on a lead she owns. Carries `field` so the
+   *         form can highlight it.
+   *   404 — the lead is not visible to her. Same answer as GET /leads/:id, and
+   *         deliberately indistinguishable from a lead that does not exist: a 403
+   *         would confirm the record is real and let her enumerate ids.
+   */
   @Post('activity')
   async logActivity(@Body() body: unknown, @Req() request: AuthedRequest) {
     const parsed = activitySchema.safeParse(body);
     if (!parsed.success) {
-      return { ok: false, field: parsed.error.issues[0]?.path[0], message: parsed.error.issues[0]?.message };
+      throw new BadRequestException({
+        ok: false,
+        field: parsed.error.issues[0]?.path[0],
+        message: parsed.error.issues[0]?.message,
+      });
     }
     try {
       const result = await this.activity.log(request.session!, {
@@ -175,7 +196,11 @@ export class WorklistController {
       });
       return { ok: true, ...result };
     } catch (e) {
-      if (e instanceof ActivityValidationError) return { ok: false, field: e.field, message: e.message };
+      if (e instanceof ActivityValidationError) {
+        // "not found" is an existence answer, not a field problem.
+        if (e.field === 'leadId') throw new NotFoundException({ ok: false, message: e.message });
+        throw new BadRequestException({ ok: false, field: e.field, message: e.message });
+      }
       throw e;
     }
   }
@@ -192,7 +217,7 @@ export class WorklistController {
     @Body() body: { leadId?: string; action?: 'VIEW' | 'COPY' },
     @Req() request: AuthedRequest,
   ) {
-    if (!body?.leadId) return { ok: false, message: 'No lead given.' };
+    if (!body?.leadId) throw new BadRequestException({ ok: false, message: 'No lead given.' });
     await this.activity.logPiiAccess(
       request.session!,
       body.leadId,

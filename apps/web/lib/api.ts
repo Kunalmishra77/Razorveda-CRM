@@ -12,6 +12,15 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /**
+     * The field the API blamed, when it named one.
+     *
+     * Carried through because the activity endpoint now returns a proper 400
+     * instead of a 201 with a soft-failure body (Phase 5 review). Without this,
+     * fixing the status code would have silently cost the form its ability to
+     * highlight the offending field.
+     */
+    readonly field?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -36,13 +45,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (response.status === 401) {
-    const body = (await response.json().catch(() => ({}))) as { message?: string };
+    const body = (await response.json().catch(() => ({}))) as { message?: string; field?: string };
     throw new ApiError(body.message ?? 'Your session has ended. Sign in again.', 401);
   }
 
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { message?: string };
-    throw new ApiError(body.message ?? `That request failed (HTTP ${response.status}).`, response.status);
+    const body = (await response.json().catch(() => ({}))) as { message?: string; field?: string };
+    throw new ApiError(
+      body.message ?? `That request failed (HTTP ${response.status}).`,
+      response.status,
+      typeof body.field === 'string' ? body.field : undefined,
+    );
   }
 
   return (await response.json()) as T;
