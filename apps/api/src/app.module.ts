@@ -22,6 +22,9 @@ import { IncentiveService } from './incentive/incentive.service.js';
 import { IncentiveController } from './incentive/incentive.controller.js';
 import { EesService } from './scoring/ees.service.js';
 import { EesController } from './scoring/ees.controller.js';
+import { ReportsService } from './reports/reports.service.js';
+import { ExportService } from './reports/export.service.js';
+import { ReportsController } from './reports/reports.controller.js';
 import { ActivityService } from './activity/activity.service.js';
 import { createAppPool } from './db/pool.js';
 import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
@@ -47,6 +50,7 @@ import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
     FollowupController,
     IncentiveController,
     EesController,
+    ReportsController,
   ],
   providers: [
     { provide: pg.Pool, useFactory: (): pg.Pool => createAppPool() },
@@ -75,6 +79,8 @@ import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
     { provide: FollowupService, useFactory: (pool: pg.Pool) => new FollowupService(pool), inject: [pg.Pool] },
     { provide: IncentiveService, useFactory: (pool: pg.Pool) => new IncentiveService(pool), inject: [pg.Pool] },
     { provide: EesService, useFactory: (pool: pg.Pool) => new EesService(pool), inject: [pg.Pool] },
+    { provide: ReportsService, useFactory: (pool: pg.Pool) => new ReportsService(pool), inject: [pg.Pool] },
+    { provide: ExportService, useFactory: (pool: pg.Pool) => new ExportService(pool), inject: [pg.Pool] },
     { provide: APP_GUARD, useClass: SessionGuard },
   ],
 })
