@@ -4,6 +4,7 @@ import { loginSchema } from '@razorveda/shared';
 import { ACCESS_TOKEN_TTL_MS, REFRESH_TOKEN_TTL_MS } from './session-policy.js';
 import { AuthService } from './auth.service.js';
 import { Public, type AuthedRequest } from './session.guard.js';
+import QRCode from 'qrcode';
 
 /**
  * Auth routes.
@@ -47,6 +48,38 @@ export class AuthController {
 
     setAuthCookies(response, outcome.accessToken, outcome.refreshToken);
     return { ok: true, user: outcome.user };
+  }
+
+  /**
+   * Two-factor setup, step 1 (docs/05). Public because an admin who cannot sign
+   * in yet is exactly who needs it — the password is the gate, not a session.
+   */
+  @Public()
+  @Post('totp/start')
+  async startEnrolment(@Body() body: { email?: string; password?: string }) {
+    if (!body?.email || !body?.password) {
+      return { ok: false, message: 'Enter your email and password first.' };
+    }
+    const r = await this.auth.startTotpEnrolment(body.email, body.password);
+    if (!r.ok) return r;
+    return {
+      ok: true,
+      enrolmentToken: r.enrolmentToken,
+      // Shown for manual entry, because a QR is useless on the phone you are
+      // already holding the screen with.
+      secret: r.secret,
+      qrDataUri: await QRCode.toDataURL(r.otpauthUri, { margin: 1, width: 220 }),
+    };
+  }
+
+  /** Step 2. Nothing is saved until a real code from the app arrives. */
+  @Public()
+  @Post('totp/confirm')
+  async confirmEnrolment(@Body() body: { enrolmentToken?: string; code?: string }) {
+    if (!body?.enrolmentToken || !body?.code) {
+      return { ok: false, message: 'Enter the 6-digit code from your authenticator.' };
+    }
+    return this.auth.confirmTotpEnrolment(body.enrolmentToken, body.code);
   }
 
   @Public()

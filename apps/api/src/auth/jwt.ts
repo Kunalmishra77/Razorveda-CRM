@@ -82,3 +82,54 @@ export async function verifyAccessToken(token: string): Promise<VerifyResult> {
 
 /** Refresh tokens are opaque random strings; only their hash is stored (D-54). */
 export const REFRESH_TOKEN_BYTES = 32;
+
+/**
+ * The enrolment token.
+ *
+ * Carries the PROPOSED secret between the two enrolment steps, signed, so it
+ * cannot be swapped for one an attacker controls after the password check has
+ * already passed. Short-lived by design — long enough to scan a QR and type a
+ * code, not long enough to sit in a tab for an afternoon.
+ */
+export interface EnrolmentClaims {
+  readonly sub: string;
+  readonly secret: string;
+}
+
+export async function signEnrolmentToken(
+  claims: EnrolmentClaims,
+  nowMs: number,
+  ttlMs: number,
+): Promise<string> {
+  return new SignJWT({ secret: claims.secret, purpose: 'totp-enrolment' })
+    .setProtectedHeader({ alg: ALG })
+    .setSubject(claims.sub)
+    .setIssuedAt(Math.floor(nowMs / 1000))
+    .setExpirationTime(Math.floor((nowMs + ttlMs) / 1000))
+    .setIssuer('razorveda-crm')
+    .setAudience('razorveda-crm')
+    .sign(secretKey());
+}
+
+export async function verifyEnrolmentToken(
+  token: string,
+): Promise<{ ok: true; claims: EnrolmentClaims } | { ok: false; reason: string }> {
+  try {
+    const { payload } = await jwtVerify(token, secretKey(), {
+      algorithms: [ALG],
+      issuer: 'razorveda-crm',
+      audience: 'razorveda-crm',
+    });
+    // An access token must never be usable as an enrolment token, so the purpose
+    // is checked rather than assumed from the shape.
+    if (payload['purpose'] !== 'totp-enrolment') return { ok: false, reason: 'wrong token type' };
+    const sub = payload.sub;
+    const secret = payload['secret'];
+    if (typeof sub !== 'string' || typeof secret !== 'string') {
+      return { ok: false, reason: 'token is incomplete' };
+    }
+    return { ok: true, claims: { sub, secret } };
+  } catch (e) {
+    return { ok: false, reason: (e as Error).message };
+  }
+}

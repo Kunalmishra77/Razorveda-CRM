@@ -156,6 +156,45 @@ AS $$
 $$;
 GRANT EXECUTE ON FUNCTION auth_lookup(text) TO app_role;
 
+-- Two-factor enrolment writes to app_user, which is admin-only — and an admin
+-- enrolling for the FIRST TIME has no session, so is_admin() is false.
+--
+-- The failure mode here is worse than a refusal: RLS filters an UPDATE SILENTLY.
+-- The statement succeeded, matched zero rows, and the code read that as "this
+-- account already has an authenticator". A permissions problem wearing a
+-- business-rule message, with nothing in the log. Found by enrolling.
+--
+-- `totp_secret IS NULL` stays in the WHERE clause so the one-time rule is enforced
+-- by the database rather than by the caller, and two concurrent enrolments cannot
+-- both win.
+CREATE OR REPLACE FUNCTION auth_enrol_totp(p_user_id uuid, p_secret text)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE updated int;
+BEGIN
+  UPDATE app_user SET totp_secret = p_secret
+   WHERE user_id = p_user_id AND totp_secret IS NULL;
+  GET DIAGNOSTICS updated = ROW_COUNT;
+  RETURN updated = 1;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION auth_enrol_totp(uuid, text) TO app_role;
+
+-- Same reason: recording a successful sign-in touches an admin-only table from a
+-- context that has no role yet.
+CREATE OR REPLACE FUNCTION auth_touch_last_login(p_user_id uuid)
+RETURNS void
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  UPDATE app_user SET last_login_at = now() WHERE user_id = p_user_id;
+$$;
+GRANT EXECUTE ON FUNCTION auth_touch_last_login(uuid) TO app_role;
+
 -- Sessions are created and checked before any user context exists, so they carry
 -- their own policy rather than sitting in the admin-only loop. A row holds a
 -- refresh token HASH, never the token, so read access buys an attacker nothing —

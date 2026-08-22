@@ -21,6 +21,9 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [needsTotp, setNeedsTotp] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Two-factor setup, for an admin signing in for the first time.
+  const [enrol, setEnrol] = useState<{ token: string; secret: string; qr: string } | null>(null);
+  const [enrolCode, setEnrolCode] = useState('');
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,7 +44,21 @@ export default function LoginPage() {
       const result = await api.post<LoginResponse>('/auth/login', parsed.data);
       if (!result.ok) {
         // TOTP_REQUIRED is not a failure to shout about — it is the next step.
-        if (result.reason === 'TOTP_REQUIRED') setNeedsTotp(true);
+        if (result.reason === 'TOTP_REQUIRED') {
+          setNeedsTotp(true);
+          // "Required but not set up yet" is a first login, not a wrong code.
+          // Offer setup rather than an error the admin cannot act on.
+          if (/not set up yet/i.test(result.message ?? '')) {
+            const start = await api.post<{
+              ok: boolean; message?: string; enrolmentToken?: string; secret?: string; qrDataUri?: string;
+            }>('/auth/totp/start', { email, password });
+            if (start.ok && start.enrolmentToken) {
+              setEnrol({ token: start.enrolmentToken, secret: start.secret!, qr: start.qrDataUri! });
+              setError(null);
+              return;
+            }
+          }
+        }
         setError(result.message ?? 'That did not work.');
         return;
       }
@@ -53,6 +70,80 @@ export default function LoginPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function confirmEnrolment(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.post<{ ok: boolean; message?: string }>('/auth/totp/confirm', {
+        enrolmentToken: enrol?.token,
+        code: enrolCode,
+      });
+      if (!r.ok) { setError(r.message ?? 'That code was not accepted.'); return; }
+      // Enrolled. Send them back to sign in properly with their new code.
+      setEnrol(null);
+      setEnrolCode('');
+      setTotp('');
+      setNeedsTotp(true);
+      setError('Authenticator linked. Enter the current 6-digit code to sign in.');
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'That could not be confirmed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (enrol) {
+    return (
+      <main style={{ ...s.page, maxWidth: 400, paddingTop: 56 }}>
+        <h1 style={s.h1}>Set up two-factor</h1>
+        <p style={s.sub}>
+          Admin accounts need an authenticator app. This is a one-time setup.
+        </p>
+
+        <form onSubmit={confirmEnrolment} style={s.card}>
+          <ol style={{ fontSize: 13, color: T.muted, paddingLeft: 18, margin: '0 0 12px' }}>
+            <li>Open Google Authenticator, Authy or similar.</li>
+            <li>Scan this code, or type the key below.</li>
+            <li>Enter the 6-digit code it shows.</li>
+          </ol>
+
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={enrol.qr} alt="QR code for your authenticator app"
+            style={{ display: 'block', margin: '0 auto 10px', border: `1px solid ${T.line}`, borderRadius: 3 }}
+          />
+
+          <p style={{ ...s.sub, fontSize: 11.5, textAlign: 'center', margin: '0 0 4px' }}>
+            Cannot scan? Type this key instead:
+          </p>
+          <p style={{ ...s.mono, textAlign: 'center', wordBreak: 'break-all', fontSize: 12, margin: '0 0 14px' }}>
+            {enrol.secret}
+          </p>
+
+          <label style={s.label} htmlFor="enrolCode">6-digit code</label>
+          <input
+            id="enrolCode" inputMode="numeric" maxLength={6} value={enrolCode}
+            onChange={(e) => setEnrolCode(e.target.value.replace(/\D/g, ''))}
+            style={{ ...s.input, ...s.mono, letterSpacing: '3px', marginBottom: 12 }}
+          />
+
+          <button type="submit" disabled={busy || enrolCode.length !== 6}
+            style={busy || enrolCode.length !== 6 ? s.btnDisabled : { ...s.btnPrimary, width: '100%' }}>
+            {busy ? 'Checking…' : 'Link authenticator'}
+          </button>
+
+          {error && <p role="alert" style={{ color: T.clay, fontSize: 13, marginTop: 12, marginBottom: 0 }}>{error}</p>}
+        </form>
+
+        <p style={{ ...s.sub, fontSize: 12 }}>
+          Keep this app. If you lose it, an admin has to reset two-factor for you — it cannot be
+          re-linked from this screen.
+        </p>
+      </main>
+    );
   }
 
   return (

@@ -4,7 +4,13 @@ import type { Pool } from 'pg';
 import type { UserRole } from '@razorveda/shared';
 import { withSystemContext } from '../db/rls-context.js';
 import { evaluateLogin, type LoginCandidate, type LoginDecision } from './evaluate-login.js';
-import { signAccessToken, REFRESH_TOKEN_BYTES } from './jwt.js';
+import {
+  signAccessToken, signEnrolmentToken, verifyEnrolmentToken, REFRESH_TOKEN_BYTES,
+} from './jwt.js';
+import {
+  ENROLMENT_TOKEN_TTL_MS, evaluateEnrolment, generateTotpSecret, otpauthUri,
+  type EnrolmentCandidate,
+} from './totp-enrolment.js';
 import {
   evaluateRefresh, evaluateSession, revokeMessage,
   sessionsToRevokeOnLogin, type RevokeReason, type StoredSession,
@@ -128,9 +134,8 @@ export class AuthService {
       const sessionId = created[0]?.session_id;
       if (!sessionId) throw new Error('Failed to create a session.');
 
-      await client.query(`UPDATE app_user SET last_login_at = now() WHERE user_id = $1`, [
-        decision.userId,
-      ]);
+      // Same reason as above: app_user is admin-only and login has no role yet.
+      await client.query(`SELECT auth_touch_last_login($1)`, [decision.userId]);
       await this.audit(client, decision.userId, 'LOGIN_SUCCEEDED', { sessionId });
 
       return {
@@ -278,6 +283,104 @@ export class AuthService {
         ),
         refreshToken: next,
       };
+    });
+  }
+
+  /**
+   * Step 1 of enrolment: prove the password, get a secret to scan.
+   *
+   * The password check is not optional politeness — without it, anyone who knew
+   * an admin's email could bind their own authenticator to the account and own
+   * it outright.
+   */
+  async startTotpEnrolment(
+    email: string,
+    password: string,
+    nowMs = Date.now(),
+  ): Promise<
+    | { readonly ok: true; readonly enrolmentToken: string; readonly secret: string; readonly otpauthUri: string }
+    | { readonly ok: false; readonly reason: string; readonly message: string }
+  > {
+    return withSystemContext(this.pool, 'start two-factor enrolment', async (client) => {
+      const { rows } = await client.query<{
+        user_id: string; password_hash: string; role: UserRole;
+        is_locked: boolean; totp_secret: string | null;
+      }>(`SELECT * FROM auth_lookup($1)`, [email]);
+
+      const user = rows[0];
+      const passwordValid = user
+        ? await verifyPassword(user.password_hash, password).catch(() => false)
+        : await verifyPassword(DUMMY_HASH, password).catch(() => false);
+
+      const candidate: EnrolmentCandidate | null = user
+        ? {
+            userId: user.user_id,
+            email,
+            role: user.role,
+            isLocked: user.is_locked,
+            hasSecret: user.totp_secret !== null,
+          }
+        : null;
+
+      const decision = evaluateEnrolment(candidate, passwordValid);
+      if (!decision.ok) {
+        await this.audit(client, user?.user_id ?? null, 'TOTP_ENROLMENT_REFUSED', {
+          reason: decision.reason,
+          email,
+        });
+        return { ok: false, reason: decision.reason, message: decision.message };
+      }
+
+      const secret = generateTotpSecret();
+      await this.audit(client, decision.userId, 'TOTP_ENROLMENT_STARTED', { email });
+
+      return {
+        ok: true,
+        // Signed, so the secret cannot be swapped between the two steps.
+        enrolmentToken: await signEnrolmentToken(
+          { sub: decision.userId, secret },
+          nowMs,
+          ENROLMENT_TOKEN_TTL_MS,
+        ),
+        secret,
+        otpauthUri: otpauthUri(decision.email, secret),
+      };
+    });
+  }
+
+  /** Step 2: prove the authenticator works before anything is saved. */
+  async confirmTotpEnrolment(
+    enrolmentToken: string,
+    code: string,
+    nowMs = Date.now(),
+  ): Promise<{ readonly ok: true } | { readonly ok: false; readonly message: string }> {
+    const verified = await verifyEnrolmentToken(enrolmentToken);
+    if (!verified.ok) {
+      return { ok: false, message: 'That setup has expired. Start again from the beginning.' };
+    }
+    if (!verifyTotp(verified.claims.secret, code, nowMs)) {
+      return { ok: false, message: 'That code is not right. Check your authenticator and try again.' };
+    }
+
+    return withSystemContext(this.pool, 'confirm two-factor enrolment', async (client) => {
+      // SECURITY DEFINER, not a direct UPDATE. app_user is admin-only, and an
+      // admin enrolling for the first time has no session — so the UPDATE matched
+      // zero rows SILENTLY and this branch reported "already enrolled" for what
+      // was really a permissions failure. The `totp_secret IS NULL` guard lives
+      // inside the function, so the one-time rule is the database's and two
+      // concurrent enrolments cannot both win.
+      const { rows: [result] } = await client.query<{ enrolled: boolean }>(
+        `SELECT auth_enrol_totp($1, $2) AS enrolled`,
+        [verified.claims.sub, verified.claims.secret],
+      );
+      if (!result?.enrolled) {
+        return {
+          ok: false,
+          message: 'This account already has an authenticator. Ask an admin to reset two-factor.',
+        };
+      }
+      await this.audit(client, verified.claims.sub, 'TOTP_ENROLLED', {});
+      return { ok: true };
     });
   }
 
