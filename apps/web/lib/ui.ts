@@ -122,8 +122,13 @@ export const s = {
     whiteSpace: 'nowrap',
   }),
 
-  notice: (tone: 'ok' | 'warn' | 'bad'): CSSProperties => ({
-    border: `1px solid ${{ ok: T.vine, warn: T.brass, bad: T.clay }[tone]}`,
+  /**
+   * `flat` is the neutral tone: a caveat that is information rather than a
+   * problem — "working days this month", "ROI is omitted because no spend is
+   * recorded". Colouring those amber would train people to ignore amber.
+   */
+  notice: (tone: 'ok' | 'warn' | 'bad' | 'flat'): CSSProperties => ({
+    border: `1px solid ${{ ok: T.vine, warn: T.brass, bad: T.clay, flat: T.line }[tone]}`,
     background: T.card,
     borderRadius: 3,
     padding: 12,
@@ -133,6 +138,12 @@ export const s = {
   }),
 
   empty: { color: T.muted, fontSize: 13, padding: '18px 6px' },
+
+  /** The sentence under a page title that says what the screen is for. */
+  lede: { color: T.muted, fontSize: 13.5, maxWidth: 680, margin: '0 0 16px' },
+
+  /** Small print that qualifies what is above it — caveats, footnotes, warnings. */
+  hint: { color: T.muted, fontSize: 12, margin: '6px 0 0' },
   srOnly: {
     position: 'absolute',
     width: 1,

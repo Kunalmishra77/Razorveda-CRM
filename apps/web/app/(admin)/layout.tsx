@@ -18,6 +18,8 @@ import { s, T } from '../../lib/ui';
 const NAV = [
   { href: '/upload', label: 'Upload Centre', hint: 'Nine channels, batch history' },
   { href: '/assignment', label: 'Lead Assignment', hint: 'The unassigned pool' },
+  { href: '/reports', label: 'Reports & MIS', hint: 'Daily, weekly, month close' },
+  { href: '/security', label: 'Audit & Security', hint: 'Locks, copy log, sessions' },
 ] as const;
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -81,7 +83,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div style={{ padding: '18px 16px 6px', color: T.faint, fontSize: 10, letterSpacing: '1.4px' }}>
           NOT BUILT YET
         </div>
-        {['Customer 360', 'Orders & RTO', 'Master Data', 'Reports & MIS', 'Audit & Security'].map((label) => (
+        {['Customer 360', 'Orders & RTO', 'Master Data'].map((label) => (
           <div key={label} style={{ ...navLink(false), color: T.faint, cursor: 'default' }}>{label}</div>
         ))}
       </nav>
