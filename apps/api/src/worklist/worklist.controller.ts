@@ -1,0 +1,249 @@
+import { Body, Controller, Get, Inject, Param, Post, Req, NotFoundException } from '@nestjs/common';
+import pgLib from 'pg';
+import type { Pool } from 'pg';
+import { z } from 'zod';
+import { withRlsContext } from '../db/rls-context.js';
+import type { AuthedRequest } from '../auth/session.guard.js';
+import { ActivityService, ActivityValidationError } from '../activity/activity.service.js';
+import { BAND_LABEL, BAND_ORDER, bandCounts, bandLeads, type WorklistLead } from './order-worklist.js';
+
+/**
+ * The employee portal (docs/07 §4).
+ *
+ * Every route here is scoped by RLS, not by a WHERE clause. A rep asking for
+ * another rep's lead gets zero rows, and the controller turns that into 404 —
+ * 403 would confirm the record exists (docs/05 test 1).
+ */
+
+const activitySchema = z.object({
+  leadId: z.string().uuid(),
+  type: z.enum(['CALL', 'WHATSAPP', 'SMS', 'NOTE']),
+  dispositionId: z.string().uuid().nullable(),
+  connected: z.boolean().optional(),
+  remarkRaw: z.string().max(4000).optional(),
+  followupAt: z.string().datetime().optional(),
+});
+
+@Controller()
+export class WorklistController {
+  constructor(
+    @Inject(pgLib.Pool) private readonly pool: Pool,
+    @Inject(ActivityService) private readonly activity: ActivityService,
+  ) {}
+
+  /**
+   * My Day + the worklist, in one call.
+   *
+   * The order is FIXED and not user-sortable (docs/07 §4). A rep who can sort by
+   * value works the big tickets and lets follow-ups rot — which is how 174 client
+   * leads sat untouched for a full validity window.
+   */
+  @Get('worklist')
+  async worklist(@Req() request: AuthedRequest) {
+    const session = request.session!;
+    return withRlsContext(this.pool, session, async (client) => {
+      const { rows } = await client.query<WorklistRow>(
+        `SELECT l.lead_id, l.next_followup_at, c.next_due_date AS repeat_due_date,
+                l.assigned_at, l.valid_till, l.is_converted, l.closed_at,
+                c.full_name, c.primary_phone, c.state, c.lifetime_orders,
+                s.display_name AS source, l.product_interest, l.contact_attempts,
+                d.label AS disposition
+           FROM lead l
+           JOIN customer c ON c.customer_id = l.customer_id
+           JOIN lead_source s ON s.source_id = l.source_id
+           LEFT JOIN disposition d ON d.disposition_id = l.current_disposition_id`,
+      );
+
+      const banded = bandLeads(rows.map(toWorklistLead), new Date().toISOString());
+      const counts = bandCounts(banded);
+      const byId = new Map(rows.map((r) => [r.lead_id, r]));
+
+      // My Day (docs/07 §4). Dials and connects are SELF-REPORTED — reps dial from
+      // their own handsets (D-03) — and the UI must say so, so the flag ships with
+      // the number rather than being remembered.
+      const { rows: [today] } = await client.query<{ dials: string; connects: string }>(
+        `SELECT count(*) FILTER (WHERE type = 'CALL')::text AS dials,
+                count(*) FILTER (WHERE type = 'CALL' AND connected)::text AS connects
+           FROM activity
+          WHERE employee_id = current_employee_id()
+            AND occurred_at::date = CURRENT_DATE`,
+      );
+
+      const { rows: [targets] } = await client.query<{ monthly_target: string; realised: string }>(
+        `SELECT e.monthly_target::text,
+                coalesce((
+                  SELECT sum(o.final_value) FROM "order" o
+                   WHERE o.booked_by_employee_id = e.employee_id
+                     AND o.current_status = 'DELIVERED'
+                     AND date_trunc('month', o.delivered_date) = date_trunc('month', CURRENT_DATE)
+                ), 0)::text AS realised
+           FROM employee e WHERE e.user_id = $1`,
+        [session.userId],
+      );
+
+      return {
+        ok: true,
+        myDay: {
+          // Realised, not booked. The only basis for score and incentive.
+          monthlyTarget: targets?.monthly_target ?? '0',
+          realisedThisMonth: targets?.realised ?? '0',
+          dialsToday: Number(today?.dials ?? 0),
+          connectsToday: Number(today?.connects ?? 0),
+          selfReported: true,
+        },
+        counts,
+        bands: BAND_ORDER.map((band) => ({ band, label: BAND_LABEL[band] })),
+        leads: banded.map((b) => {
+          const row = byId.get(b.lead.leadId)!;
+          return {
+            leadId: b.lead.leadId,
+            band: b.band,
+            bandLabel: BAND_LABEL[b.band],
+            fullName: row.full_name,
+            phone: row.primary_phone,
+            source: row.source,
+            interest: row.product_interest,
+            state: row.state,
+            attempts: row.contact_attempts,
+            disposition: row.disposition,
+            followupAt: row.next_followup_at,
+            validTill: row.valid_till,
+            lifetimeOrders: row.lifetime_orders,
+          };
+        }),
+      };
+    });
+  }
+
+  /** Lead detail, including the full mobile number (docs/07 §4). */
+  @Get('leads/:id')
+  async lead(@Param('id') leadId: string, @Req() request: AuthedRequest) {
+    return withRlsContext(this.pool, request.session!, async (client) => {
+      const { rows } = await client.query(
+        `SELECT l.lead_id, l.contact_attempts, l.ever_connected, l.next_followup_at,
+                l.valid_till, l.closed_at, l.is_converted,
+                c.customer_id, c.full_name, c.primary_phone, c.city, c.state, c.pincode,
+                c.lifetime_orders, c.lifetime_value, c.stage, c.rto_count, c.do_not_call,
+                s.display_name AS source, l.product_interest,
+                d.label AS current_disposition
+           FROM lead l
+           JOIN customer c ON c.customer_id = l.customer_id
+           JOIN lead_source s ON s.source_id = l.source_id
+           LEFT JOIN disposition d ON d.disposition_id = l.current_disposition_id
+          WHERE l.lead_id = $1`,
+        [leadId],
+      );
+
+      const lead = rows[0];
+      // RLS already returned nothing for another rep's lead. 404, never 403 —
+      // 403 confirms the record exists (docs/05 test 1).
+      if (!lead) throw new NotFoundException('That lead was not found.');
+
+      const { rows: history } = await client.query(
+        `SELECT a.occurred_at, a.type, a.connected, a.remark_raw, d.label AS disposition
+           FROM activity a
+           LEFT JOIN disposition d ON d.disposition_id = a.disposition_id
+          WHERE a.lead_id = $1
+          ORDER BY a.occurred_at DESC LIMIT 20`,
+        [leadId],
+      );
+
+      const { rows: dispositions } = await client.query(
+        `SELECT disposition_id, code, label, category, requires_followup_date, counts_as_connect
+           FROM disposition ORDER BY sort_order`,
+      );
+
+      return { ok: true, lead, history, dispositions };
+    });
+  }
+
+  /** Log a contact attempt. Disposition mandatory, enforced server-side (D-77). */
+  @Post('activity')
+  async logActivity(@Body() body: unknown, @Req() request: AuthedRequest) {
+    const parsed = activitySchema.safeParse(body);
+    if (!parsed.success) {
+      return { ok: false, field: parsed.error.issues[0]?.path[0], message: parsed.error.issues[0]?.message };
+    }
+    try {
+      const result = await this.activity.log(request.session!, {
+        leadId: parsed.data.leadId,
+        type: parsed.data.type,
+        dispositionId: parsed.data.dispositionId,
+        remarkRaw: parsed.data.remarkRaw ?? null,
+        followupAt: parsed.data.followupAt ?? null,
+        connected: parsed.data.connected ?? null,
+      });
+      return { ok: true, ...result };
+    } catch (e) {
+      if (e instanceof ActivityValidationError) return { ok: false, field: e.field, message: e.message };
+      throw e;
+    }
+  }
+
+  /**
+   * Records that a rep revealed or copied a phone number (docs/05).
+   *
+   * Reps dial from their own handsets, so they must see the number — that removes
+   * prevention and leaves detection and attribution. This row is the attribution.
+   * The Phase 5 velocity lock reads it.
+   */
+  @Post('pii/copy')
+  async logCopy(
+    @Body() body: { leadId?: string; action?: 'VIEW' | 'COPY' },
+    @Req() request: AuthedRequest,
+  ) {
+    if (!body?.leadId) return { ok: false, message: 'No lead given.' };
+    await this.activity.logPiiAccess(
+      request.session!,
+      body.leadId,
+      body.action === 'VIEW' ? 'VIEW' : 'COPY',
+      request.ip ?? null,
+    );
+    return { ok: true };
+  }
+}
+
+interface WorklistRow {
+  lead_id: string;
+  next_followup_at: string | Date | null;
+  repeat_due_date: string | Date | null;
+  assigned_at: string | Date | null;
+  valid_till: string | Date | null;
+  is_converted: boolean;
+  closed_at: string | Date | null;
+  full_name: string | null;
+  primary_phone: string | null;
+  state: string | null;
+  lifetime_orders: number;
+  source: string;
+  product_interest: string | null;
+  contact_attempts: number;
+  disposition: string | null;
+}
+
+/**
+ * The boundary between the driver's types and the domain's.
+ *
+ * `pg` returns `timestamptz` and `date` columns as JS **Date objects**, not
+ * strings. The worklist ordering is pure and typed on ISO strings — it was tested
+ * with strings and worked perfectly — so the first real query crashed with
+ * "iso.slice is not a function". The unit tests could not have caught it: the gap
+ * was never in the logic, it was in the adapter that did not exist yet.
+ *
+ * Converting here keeps the domain functions pure and string-typed, rather than
+ * teaching every one of them about a database driver.
+ */
+const iso = (v: string | Date | null): string | null => {
+  if (v === null || v === undefined) return null;
+  return v instanceof Date ? v.toISOString() : String(v);
+};
+
+const toWorklistLead = (r: WorklistRow): WorklistLead => ({
+  leadId: r.lead_id,
+  nextFollowupAt: iso(r.next_followup_at),
+  repeatDueDate: iso(r.repeat_due_date),
+  assignedAt: iso(r.assigned_at),
+  validTill: iso(r.valid_till),
+  isConverted: r.is_converted,
+  closedAt: iso(r.closed_at),
+});

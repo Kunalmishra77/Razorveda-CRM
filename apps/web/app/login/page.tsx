@@ -45,7 +45,9 @@ export default function LoginPage() {
         setError(result.message ?? 'That did not work.');
         return;
       }
-      router.push('/upload');
+      // Each role lands where their work is. An employee sent to the Upload
+      // Centre would see a 401 section and read it as being locked out.
+      router.push(result.user?.role === 'EMPLOYEE' ? '/worklist' : '/upload');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Something unexpected happened.');
     } finally {
