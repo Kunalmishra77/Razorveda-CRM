@@ -16,6 +16,13 @@ import { assertSafeToDropSchema, createLocalDevMarker, hasLocalDevMarker, public
  */
 
 const sqlPath = (name: string) => fileURLToPath(new URL(`../../../db/${name}`, import.meta.url));
+/**
+ * The certified views live in packages/metrics, not db/, deliberately: docs/04
+ * says reports read certified views and nothing else, and keeping the SQL beside
+ * the registry that documents it makes the pair obvious. Applied last, because
+ * every view depends on the schema being complete.
+ */
+const viewsPath = () => fileURLToPath(new URL('../../metrics/sql/views.sql', import.meta.url));
 
 async function main(): Promise<void> {
   const target = requireDatabaseUrl();
@@ -45,12 +52,18 @@ async function main(): Promise<void> {
       console.log('   wrote _local_dev_marker');
     }
 
-    for (const file of ['schema.sql', 'rls-policies.sql']) {
+    const files: ReadonlyArray<readonly [string, string]> = [
+      ['schema.sql', sqlPath('schema.sql')],
+      ['rls-policies.sql', sqlPath('rls-policies.sql')],
+      ['metrics/views.sql', viewsPath()],
+    ];
+
+    for (const [file, path] of files) {
       console.log(`   applying ${file}`);
       // Single transaction per file: a half-applied schema is worse than none.
       await client.query('BEGIN');
       try {
-        await client.query(readFileSync(sqlPath(file), 'utf8'));
+        await client.query(readFileSync(path, 'utf8'));
         await client.query('COMMIT');
       } catch (e) {
         await client.query('ROLLBACK');

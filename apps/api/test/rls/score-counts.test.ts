@@ -28,6 +28,9 @@ let pool: pg.Pool;
 let service: EesService;
 let admin: RlsSession;
 let today: string;
+let repId: string;
+const probeOrders: string[] = [];
+let probeLead: string;
 
 beforeAll(async () => {
   if (!DATABASE_URL) {
@@ -44,9 +47,99 @@ beforeAll(async () => {
 
   const { rows: [d] } = await pool.query<{ d: string }>(`SELECT CURRENT_DATE::text AS d`);
   today = d!.d;
+
+  // The test builds its own orders rather than relying on whatever the fixture
+  // happens to contain. A fresh database has no delivered orders at all, and a
+  // guard that quietly passes over an empty set is the thing this file exists to
+  // prevent — the fan-out it was written for was invisible precisely because
+  // everything "passed".
+  const { rows: [rep] } = await pool.query<{ employee_id: string }>(
+    `SELECT employee_id FROM employee WHERE status = 'ACTIVE' ORDER BY emp_code LIMIT 1`,
+  );
+  if (!rep) throw new Error('need an active employee. Run db:seed.');
+  repId = rep.employee_id;
+
+  const { rows: [c] } = await pool.query<{ customer_id: string }>(
+    `INSERT INTO customer (primary_phone, full_name) VALUES ('9000000009','Score Probe')
+     ON CONFLICT (primary_phone) DO UPDATE SET full_name = EXCLUDED.full_name
+     RETURNING customer_id`,
+  );
+
+  // The orders hang off a real lead assigned to this rep. Not optional: the EES
+  // cohort query INNER JOINs `lead`, and a rep only appears at all if she had
+  // leads assigned in the period. An order with lead_id NULL is invisible to
+  // scoring entirely — worth knowing, and the reason this setup is not shorter.
+  const { rows: [lead] } = await pool.query<{ lead_id: string }>(
+    `INSERT INTO lead (customer_id, source_id, assigned_to, assigned_at, received_at, valid_till)
+     SELECT $1, source_id, $2, now(), now(), (CURRENT_DATE + 30)
+       FROM lead_source ORDER BY code LIMIT 1
+     RETURNING lead_id`,
+    [c!.customer_id, repId],
+  );
+  probeLead = lead!.lead_id;
+
+  // Two orders for one rep: one delivered, one delivered-then-returned. The
+  // second is the shape that exposed the fan-out, because it carries three
+  // ledger rows rather than two.
+  for (const [n, outcome] of [['A', 'DELIVERED'], ['B', 'RTO']] as const) {
+    const { rows: [o] } = await pool.query<{ order_id: string }>(
+      `INSERT INTO "order" (order_number, customer_id, lead_id, source_id,
+                            booked_by_employee_id, order_date, final_value,
+                            company_base_value, payment_mode, prepaid_amount, cod_amount,
+                            current_status, delivered_date, rto_date)
+       SELECT 'SCORE-PROBE-' || $2, $1, $5, source_id, $3, CURRENT_DATE, 1000, 0,
+              'COD', 0, 1000, $4::order_status, CURRENT_DATE,
+              CASE WHEN $4 = 'RTO' THEN CURRENT_DATE ELSE NULL END
+         FROM lead_source ORDER BY code LIMIT 1
+       ON CONFLICT (order_number) DO NOTHING
+       RETURNING order_id`,
+      [c!.customer_id, n, repId, outcome, probeLead],
+    );
+    if (!o) continue;
+    probeOrders.push(o.order_id);
+
+    await pool.query(
+      `INSERT INTO order_status_event (order_id, from_status, to_status, source)
+       VALUES ($1, NULL, 'DELIVERED', 'TEST')`,
+      [o.order_id],
+    );
+    // Several ledger rows per order — the fan-out's raw material.
+    await pool.query(
+      `INSERT INTO attribution_ledger (order_id, employee_id, entry_type, company_base_value,
+                                       employee_credited_value, rule_applied, is_realised, period_key)
+       VALUES ($1,$2,'BOOKED_CREDIT',0,1000,'TEST',false,to_char(CURRENT_DATE,'YYYY-MM')),
+              ($1,$2,'REALISED_CREDIT',0,1000,'TEST',true,to_char(CURRENT_DATE,'YYYY-MM'))`,
+      [o.order_id, repId],
+    );
+    if (outcome === 'RTO') {
+      await pool.query(
+        `INSERT INTO order_status_event (order_id, from_status, to_status, source)
+         VALUES ($1, 'DELIVERED', 'RTO', 'TEST')`,
+        [o.order_id],
+      );
+      await pool.query(
+        `INSERT INTO attribution_ledger (order_id, employee_id, entry_type, company_base_value,
+                                         employee_credited_value, rule_applied, is_realised, period_key)
+         VALUES ($1,$2,'CLAWBACK',0,-1000,'TEST',true,to_char(CURRENT_DATE,'YYYY-MM'))`,
+        [o.order_id, repId],
+      );
+    }
+  }
 });
 
 afterAll(async () => {
+  // order_status_event and attribution_ledger are append-only, so the probe
+  // orders are cancelled rather than deleted — the same correction a human makes.
+  await pool?.query(`UPDATE lead SET closed_at = now(), assigned_to = NULL WHERE lead_id = $1`, [
+    probeLead,
+  ]).catch(() => undefined);
+  if (probeOrders.length > 0) {
+    await pool
+      ?.query(`UPDATE "order" SET current_status = 'CANCELLED' WHERE order_id = ANY($1::uuid[])`, [
+        probeOrders,
+      ])
+      .catch(() => undefined);
+  }
   await pool?.end();
 });
 

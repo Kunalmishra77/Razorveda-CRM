@@ -138,3 +138,64 @@ describe('RLS coverage', () => {
     }
   });
 });
+
+/**
+ * MATERIALISED VIEWS ARE A HOLE IN THE MODEL, AND THIS IS THE PATCH.
+ *
+ * Postgres allows an RLS policy only on a TABLE. A matview carries none, and the
+ * checks above never saw them because they filter `relkind = 'r'`. Meanwhile
+ * `ALTER DEFAULT PRIVILEGES` (D-27) grants app_role SELECT on everything new by
+ * design — including, the moment they were created, six matviews holding every
+ * rep's KPIs, the full RTO analysis, and every customer phone number in the
+ * repeat-due queue.
+ *
+ * Nothing failed. The isolation tests passed, the policy-coverage tests passed,
+ * and a rep could have read the lot with one query.
+ *
+ * The rule: app_role never touches a matview directly. It reads a
+ * security_barrier view that applies the predicate the matview cannot.
+ */
+describe('materialised views are not a bypass', () => {
+  const matviews = async (): Promise<{ name: string; app_can_read: boolean }[]> => {
+    const { rows } = await pool.query<{ name: string; app_can_read: boolean }>(
+      `SELECT c.relname AS name,
+              has_table_privilege('app_role', c.oid, 'SELECT') AS app_can_read
+         FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relkind = 'm'
+        ORDER BY c.relname`,
+    );
+    return rows;
+  };
+
+  it('finds the certified matviews, so the test cannot pass vacuously', async () => {
+    expect((await matviews()).length).toBeGreaterThanOrEqual(6);
+  });
+
+  it('app_role cannot SELECT any matview directly', async () => {
+    const readable = (await matviews()).filter((m) => m.app_can_read).map((m) => m.name);
+    expect(readable).toEqual([]);
+  });
+
+  it('every matview has a security_barrier view in front of it', async () => {
+    // A revoked matview with no wrapper is not a leak — it is a dead report. Both
+    // halves have to be there for the data to be both safe and reachable.
+    const { rows } = await pool.query<{ name: string; barrier: boolean; app_can_read: boolean }>(
+      `SELECT c.relname AS name,
+              coalesce((SELECT option_value = 'true' FROM pg_options_to_table(c.reloptions)
+                         WHERE option_name = 'security_barrier'), false) AS barrier,
+              has_table_privilege('app_role', c.oid, 'SELECT') AS app_can_read
+         FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relkind = 'v' AND c.relname LIKE 'v\_%'`,
+    );
+    const wrappers = new Map(rows.map((r) => [r.name, r]));
+
+    for (const mv of await matviews()) {
+      const wrapper = wrappers.get(mv.name.replace(/^mv_/, 'v_'));
+      expect(wrapper, `${mv.name} has no v_ wrapper — the report cannot read it`).toBeDefined();
+      // security_barrier stops a cheap user-supplied function being pushed below
+      // the predicate and seeing rows the filter was meant to hide.
+      expect(wrapper!.barrier, `${wrapper!.name} is not a security_barrier view`).toBe(true);
+      expect(wrapper!.app_can_read, `${wrapper!.name} is not readable by app_role`).toBe(true);
+    }
+  });
+});
