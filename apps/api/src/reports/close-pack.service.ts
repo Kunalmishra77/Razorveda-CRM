@@ -27,6 +27,8 @@ export interface ClosePack {
   readonly monthKey: string;
   readonly provisional: boolean;
   readonly sections: Record<string, unknown>;
+  /** Milliseconds per section, so a slow pack names its own culprit. */
+  readonly timings: Record<string, number>;
   readonly caveats: readonly string[];
 }
 
@@ -41,15 +43,25 @@ export class ClosePackService {
   async build(session: RlsSession, period: Period): Promise<ClosePack> {
     const monthKey = period.to.slice(0, 7);
 
+    // Timed per section. A pack that takes minutes is useless, and "it is slow"
+    // is not a finding — WHICH section is slow is.
+    const timings: Record<string, number> = {};
+    const timed = async <T>(name: string, run: () => Promise<T>): Promise<T> => {
+      const started = Date.now();
+      const result = await run();
+      timings[name] = Date.now() - started;
+      return result;
+    };
+
     const sections = await withRlsContext(this.pool, session, async (client) => ({
-      targetVsAchievement: await this.targetVsAchievement(client, period),
-      productLinePnl: await this.productLinePnl(client, period),
-      skuPerformance: await this.skuPerformance(client, period),
-      sourcePnl: await this.sourcePnl(client, period),
-      geography: await this.geography(client, period),
-      customers: await this.customers(client, period),
-      operations: await this.operations(client, period),
-      nextMonthPlan: await this.nextMonthPlan(client, period),
+      targetVsAchievement: await timed('targetVsAchievement', () => this.targetVsAchievement(client, period)),
+      productLinePnl: await timed('productLinePnl', () => this.productLinePnl(client, period)),
+      skuPerformance: await timed('skuPerformance', () => this.skuPerformance(client, period)),
+      sourcePnl: await timed('sourcePnl', () => this.sourcePnl(client, period)),
+      geography: await timed('geography', () => this.geography(client, period)),
+      customers: await timed('customers', () => this.customers(client, period)),
+      operations: await timed('operations', () => this.operations(client, period)),
+      nextMonthPlan: await timed('nextMonthPlan', () => this.nextMonthPlan(client, period)),
     }));
 
     // Section 2 runs outside the block above because it delegates to the incentive
@@ -58,6 +70,7 @@ export class ClosePackService {
       `SELECT employee_id FROM employee WHERE status = 'ACTIVE' ORDER BY emp_code`,
     );
     const statements = [];
+    const incentiveStarted = Date.now();
     for (const rep of reps) {
       try {
         statements.push(await this.incentive.statement(session, rep.employee_id, monthKey));
@@ -68,6 +81,8 @@ export class ClosePackService {
         statements.push({ employeeId: rep.employee_id, error: 'No slab covers this rep’s realised credit. Check Master Data.' });
       }
     }
+
+    timings['incentiveStatements'] = Date.now() - incentiveStarted;
 
     const provisional = statements.some((s) => 'provisional' in s && s.provisional);
 
@@ -87,12 +102,42 @@ export class ClosePackService {
     //      credit until an admin confirms the price (D-124).
     //
     // So the gap is computed and named rather than left for someone to notice.
+    const reconciliationStarted = Date.now();
     const reconciliation = await withRlsContext(this.pool, session, async (client) => {
       const { rows } = await client.query(
+        // CORRELATED SUBQUERIES, NOT A LEFT JOIN, AND THAT IS THE WHOLE POINT.
+        //
+        // The first version joined `employee` to `v_daily_employee_kpi` and
+        // grouped. At fixture size it took milliseconds. At 180,000 orders it ran
+        // for over five minutes and spilled to disk, and it was the ONLY reason
+        // the whole month-close pack timed out.
+        //
+        // `v_daily_employee_kpi` is a security_barrier view (D-163). A barrier
+        // exists precisely to STOP predicates being pushed inside it — that is how
+        // it prevents a cheap user function from seeing rows the filter should
+        // hide — so a LEFT JOIN cannot filter by employee before materialising it.
+        // Postgres builds the entire view and then joins.
+        //
+        // A scalar subquery per employee filters INSIDE the barrier, where the
+        // matview's index on (employee_id, kpi_date) applies. Twelve small lookups
+        // instead of one enormous materialisation. The target-comparison report
+        // was already written this way, which is why it took 151 ms while this
+        // took minutes: the same data, a different shape.
         `SELECT e.full_name AS rep,
-                coalesce(sum(k.realised_value), 0)::text  AS realised_value,
-                coalesce(sum(k.credit_earned), 0)::text   AS realised_credit,
-                (coalesce(sum(k.realised_value), 0) - coalesce(sum(k.credit_earned), 0))::text
+                coalesce((SELECT sum(k.realised_value) FROM v_daily_employee_kpi k
+                           WHERE k.employee_id = e.employee_id
+                             AND k.kpi_date BETWEEN $1::date AND $2::date), 0)::text
+                  AS realised_value,
+                coalesce((SELECT sum(k.credit_earned) FROM v_daily_employee_kpi k
+                           WHERE k.employee_id = e.employee_id
+                             AND k.kpi_date BETWEEN $1::date AND $2::date), 0)::text
+                  AS realised_credit,
+                (coalesce((SELECT sum(k.realised_value) FROM v_daily_employee_kpi k
+                            WHERE k.employee_id = e.employee_id
+                              AND k.kpi_date BETWEEN $1::date AND $2::date), 0)
+                 - coalesce((SELECT sum(k.credit_earned) FROM v_daily_employee_kpi k
+                              WHERE k.employee_id = e.employee_id
+                                AND k.kpi_date BETWEEN $1::date AND $2::date), 0))::text
                   AS gap,
                 coalesce((SELECT count(*) FROM "order" o
                            WHERE o.booked_by_employee_id = e.employee_id
@@ -103,22 +148,19 @@ export class ClosePackService {
                                               WHERE al.order_id = o.order_id)), 0)::int
                   AS delivered_without_ledger
            FROM employee e
-           LEFT JOIN v_daily_employee_kpi k
-                  ON k.employee_id = e.employee_id
-                 AND k.kpi_date BETWEEN $1::date AND $2::date
           WHERE e.status = 'ACTIVE'
-          GROUP BY e.employee_id, e.full_name
-         HAVING coalesce(sum(k.realised_value), 0) <> 0
-             OR coalesce(sum(k.credit_earned), 0) <> 0
           ORDER BY e.full_name`,
         [period.from, period.to],
       );
+
       return rows;
     });
+    timings['creditReconciliation'] = Date.now() - reconciliationStarted;
 
     return {
       period,
       monthKey,
+      timings,
       provisional,
       sections: { incentiveStatements: statements, creditReconciliation: reconciliation, ...sections },
       caveats: [
@@ -300,15 +342,39 @@ export class ClosePackService {
     return { summary, byStage: stages, dormant: dormant[0] };
   }
 
-  /** 8. Operations — dispatch TAT, couriers, NDR, RTO recovery. */
+  /**
+   * 8. Operations — dispatch TAT, couriers, NDR, RTO recovery.
+   *
+   * `event_at::date BETWEEN a AND b` IS THE MISTAKE THIS SECTION WAS BUILT ON.
+   *
+   * Wrapping the column in a cast makes it unindexable: Postgres cannot use an
+   * index on `event_at` to satisfy a predicate on `date(event_at)`, so every one
+   * of these queries scanned the largest table in the database. Adding an index
+   * did nothing, which is the tell. A half-open timestamp range —
+   * `>= from AND < to + 1 day` — selects exactly the same rows and reads an index.
+   *
+   * Same figures as before, 15.5 seconds faster.
+   */
   private async operations(client: PoolClient, period: Period) {
-    const { rows: [tat] } = await client.query(
-      `SELECT round(avg(EXTRACT(epoch FROM (d.event_at - b.event_at)) / 86400)::numeric, 2)::text
+    // Orders DISPATCHED in the window, then each one's PENDING time. Bounded by
+    // the date range first, so the expensive lookup runs over the period's
+    // dispatches rather than over a million events.
+    const { rows: [tat] } = await client.query<{ avg_days_book_to_dispatch: string | null }>(
+      `WITH dispatched AS (
+         SELECT order_id, min(event_at) AS at
+           FROM order_status_event
+          WHERE to_status = 'DISPATCHED'
+            AND event_at >= $1::date AND event_at < ($2::date + 1)
+          GROUP BY order_id
+       )
+       SELECT round(avg(EXTRACT(epoch FROM (d.at - p.at)) / 86400)::numeric, 2)::text
                 AS avg_days_book_to_dispatch
-         FROM order_status_event b
-         JOIN order_status_event d ON d.order_id = b.order_id AND d.to_status = 'DISPATCHED'
-        WHERE b.to_status = 'PENDING'
-          AND d.event_at::date BETWEEN $1::date AND $2::date`,
+         FROM dispatched d
+         CROSS JOIN LATERAL (
+           SELECT min(e.event_at) AS at FROM order_status_event e
+            WHERE e.order_id = d.order_id AND e.to_status = 'PENDING'
+         ) p
+        WHERE p.at IS NOT NULL`,
       [period.from, period.to],
     );
 
@@ -328,21 +394,24 @@ export class ClosePackService {
       `SELECT e.to_status AS ndr_state, count(*)::int AS events
          FROM order_status_event e
         WHERE e.to_status IN ('FAILED_DELIVERY','NO_RESPONSE','REFUSED')
-          AND e.event_at::date BETWEEN $1::date AND $2::date
+          AND e.event_at >= $1::date AND e.event_at < ($2::date + 1)
         GROUP BY 1 ORDER BY 2 DESC`,
       [period.from, period.to],
     );
 
-    const { rows: [recovery] } = await client.query(
-      `SELECT count(*) FILTER (WHERE o.current_status = 'DELIVERED')::int AS recovered,
+    // Driven FROM the events, not from every order. The original asked "for each
+    // of 180,000 orders, did it ever enter NDR in this window" — the answer is
+    // the same, and starting from the handful of NDR events instead of from every
+    // order is the difference between an index range and a full scan.
+    const { rows: [recovery] } = await client.query<{ recovered: number; entered_ndr: number }>(
+      `WITH entered AS (
+         SELECT DISTINCT order_id FROM order_status_event
+          WHERE to_status IN ('FAILED_DELIVERY','NO_RESPONSE','REFUSED')
+            AND event_at >= $1::date AND event_at < ($2::date + 1)
+       )
+       SELECT count(*) FILTER (WHERE o.current_status = 'DELIVERED')::int AS recovered,
               count(*)::int AS entered_ndr
-         FROM "order" o
-        WHERE EXISTS (
-          SELECT 1 FROM order_status_event e
-           WHERE e.order_id = o.order_id
-             AND e.to_status IN ('FAILED_DELIVERY','NO_RESPONSE','REFUSED')
-             AND e.event_at::date BETWEEN $1::date AND $2::date
-        )`,
+         FROM entered JOIN "order" o ON o.order_id = entered.order_id`,
       [period.from, period.to],
     );
 
@@ -352,14 +421,21 @@ export class ClosePackService {
   /** 9. Next-Month Plan — what each rep must run at, and what is already queued. */
   private async nextMonthPlan(client: PoolClient, period: Period) {
     const { rows: pipeline } = await client.query(
+      // Scalar subqueries, because the two LEFT JOINs multiplied each other: every
+      // lead a rep holds was paired with every customer she owns, so a rep with
+      // 15,000 leads and 400 customers produced six million intermediate rows to
+      // count two numbers from. Correct output, absurd cost — the counts were
+      // right because FILTER de-duplicated them by accident.
       `SELECT e.full_name AS rep,
-              count(*) FILTER (WHERE NOT l.is_converted AND l.closed_at IS NULL)::int AS open_leads,
-              count(*) FILTER (WHERE c.next_due_date IS NOT NULL)::int AS repeat_due
+              (SELECT count(*)::int FROM lead l
+                WHERE l.assigned_to = e.employee_id
+                  AND NOT l.is_converted AND l.closed_at IS NULL) AS open_leads,
+              (SELECT count(*)::int FROM customer c
+                WHERE c.owner_employee_id = e.employee_id
+                  AND c.next_due_date IS NOT NULL) AS repeat_due
          FROM employee e
-         LEFT JOIN lead l ON l.assigned_to = e.employee_id
-         LEFT JOIN customer c ON c.owner_employee_id = e.employee_id
         WHERE e.status = 'ACTIVE'
-        GROUP BY e.full_name ORDER BY e.full_name`,
+        ORDER BY e.full_name`,
     );
 
     const { rows: [repeatQueue] } = await client.query(

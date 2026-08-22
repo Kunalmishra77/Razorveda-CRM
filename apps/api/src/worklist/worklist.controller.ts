@@ -2,6 +2,8 @@ import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject,
 import pgLib from 'pg';
 import type { Pool } from 'pg';
 import { z } from 'zod';
+// Defined in Phase 0, imported by nothing until the cap was found missing.
+import { EMPLOYEE_MAX_PAGE_SIZE } from '@razorveda/shared';
 import { withRlsContext } from '../db/rls-context.js';
 import type { AuthedRequest } from '../auth/session.guard.js';
 import { ActivityService, ActivityValidationError } from '../activity/activity.service.js';
@@ -42,20 +44,73 @@ export class WorklistController {
   async worklist(@Req() request: AuthedRequest) {
     const session = request.session!;
     return withRlsContext(this.pool, session, async (client) => {
+      // FILTERED AND CAPPED IN SQL. Both halves were missing, and it took real
+      // volume to see it: with three seeded leads the query looked fine.
+      //
+      // At 14,381 open leads it returned ALL of them — every customer name and
+      // full phone number a rep holds, in one GET, in ten seconds. The
+      // copy-velocity lock stops four copies in ninety seconds; this handed over
+      // fourteen thousand numbers in a single request, which makes the lock
+      // decoration. docs/05 test 4 requires the 50-row cap and the test for it
+      // PASSED — vacuously, because the fixture never had 51 rows.
+      //
+      // `EMPLOYEE_MAX_PAGE_SIZE` has existed in packages/shared since Phase 0 and
+      // was imported by nothing.
+      //
+      // The ORDER BY mirrors the band priority in order-worklist.ts so the fifty
+      // she gets are the fifty that matter. `bandLeads` still does the
+      // authoritative banding on what comes back — SQL chooses the candidates, it
+      // does not redefine the rule.
       const { rows } = await client.query<WorklistRow>(
-        `SELECT l.lead_id, l.next_followup_at, c.next_due_date AS repeat_due_date,
+        // THE FIFTY ARE CHOSEN BEFORE ANYTHING IS JOINED.
+        //
+        // Ordering and limiting in the same SELECT that joins `customer` makes
+        // Postgres evaluate the join for all 14,000 leads and then throw away
+        // 13,950 — and every one of those rows pays the customer RLS policy, which
+        // is itself a subquery. Picking the lead ids first from `lead` alone, then
+        // joining only those fifty, is the whole difference between 4.6 seconds
+        // and a screen that feels instant.
+        `WITH page AS (
+           SELECT l.lead_id
+             FROM lead l
+             LEFT JOIN customer c2 ON c2.customer_id = l.customer_id
+            WHERE NOT l.is_converted AND l.closed_at IS NULL
+            ORDER BY
+              CASE
+                WHEN l.next_followup_at < CURRENT_DATE                       THEN 1
+                WHEN l.next_followup_at::date = CURRENT_DATE                 THEN 2
+                WHEN c2.next_due_date IS NOT NULL
+                     AND c2.next_due_date <= CURRENT_DATE                    THEN 3
+                WHEN l.assigned_at::date = CURRENT_DATE                      THEN 4
+                ELSE 5
+              END,
+              coalesce(l.next_followup_at, l.assigned_at)
+            LIMIT $1
+         )
+         SELECT l.lead_id, l.next_followup_at, c.next_due_date AS repeat_due_date,
                 l.assigned_at, l.valid_till, l.is_converted, l.closed_at,
                 c.full_name, c.primary_phone, c.state, c.lifetime_orders,
                 s.display_name AS source, l.product_interest, l.contact_attempts,
                 d.label AS disposition
-           FROM lead l
+           FROM page
+           JOIN lead l ON l.lead_id = page.lead_id
            JOIN customer c ON c.customer_id = l.customer_id
            JOIN lead_source s ON s.source_id = l.source_id
            LEFT JOIN disposition d ON d.disposition_id = l.current_disposition_id`,
+        [EMPLOYEE_MAX_PAGE_SIZE],
+      );
+
+      // The COUNTS are the true totals, not the counts of what was returned. A rep
+      // holding 14,000 leads must see 14,000 — capping the page is a transport
+      // decision, and hiding the number behind it would be a lie about her day.
+      const { rows: [openTotal] } = await client.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM lead
+          WHERE NOT is_converted AND closed_at IS NULL AND assigned_to = current_employee_id()`,
       );
 
       const banded = bandLeads(rows.map(toWorklistLead), new Date().toISOString());
       const counts = bandCounts(banded);
+      const totalOpen = Number(openTotal?.n ?? '0');
       const byId = new Map(rows.map((r) => [r.lead_id, r]));
 
       // My Day (docs/07 §4). Dials and connects are SELF-REPORTED — reps dial from
@@ -66,7 +121,11 @@ export class WorklistController {
                 count(*) FILTER (WHERE type = 'CALL' AND connected)::text AS connects
            FROM activity
           WHERE employee_id = current_employee_id()
-            AND occurred_at::date = CURRENT_DATE`,
+            -- Half-open range, not occurred_at::date = CURRENT_DATE. The cast
+            -- makes the column unindexable and turned this into a scan of every
+            -- activity row the rep has ever logged.
+            AND occurred_at >= CURRENT_DATE
+            AND occurred_at <  CURRENT_DATE + 1`,
       );
 
       const { rows: [targets] } = await client.query<{ monthly_target: string; realised: string }>(
@@ -75,7 +134,10 @@ export class WorklistController {
                   SELECT sum(o.final_value) FROM "order" o
                    WHERE o.booked_by_employee_id = e.employee_id
                      AND o.current_status = 'DELIVERED'
-                     AND date_trunc('month', o.delivered_date) = date_trunc('month', CURRENT_DATE)
+                     -- Same reason: date_trunc() on the column defeats the partial
+                     -- index on (delivered_date) WHERE current_status='DELIVERED'.
+                     AND o.delivered_date >= date_trunc('month', CURRENT_DATE)::date
+                     AND o.delivered_date <  (date_trunc('month', CURRENT_DATE) + interval '1 month')::date
                 ), 0)::text AS realised
            FROM employee e WHERE e.user_id = $1`,
         [session.userId],

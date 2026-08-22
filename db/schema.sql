@@ -318,6 +318,27 @@ CREATE TABLE lead (
   created_at             timestamptz NOT NULL DEFAULT now(),
   updated_at             timestamptz NOT NULL DEFAULT now()
 );
+-- By STATUS, for the reports that ask "when did things reach state X".
+-- order_status_event is the largest table in the database — five rows per order,
+-- ~1M at 90 days — and every certified view reads it rather than
+-- order.current_status (D-161). Without this the dispatch-TAT query scanned the
+-- whole table twice.
+CREATE INDEX ix_event_status ON order_status_event(to_status, event_at);
+
+-- The worklist's two hot lookups, both of which were full scans at volume.
+-- THE RLS POLICY'S OWN INDEX, and the one most easily forgotten.
+--
+-- `customer_isolation` asks "does this caller have a lead for this customer?" for
+-- EVERY customer row it considers. Without an index on lead(customer_id) that is
+-- a scan per row, and at 180,000 leads it made a rep's worklist take eight
+-- seconds to return fifty records. A policy is a query, and it needs its indexes
+-- like any other.
+CREATE INDEX ix_lead_customer_assigned ON lead(customer_id, assigned_to);
+
+CREATE INDEX ix_activity_employee_day ON activity(employee_id, occurred_at);
+CREATE INDEX ix_lead_open_assigned    ON lead(assigned_to, next_followup_at)
+  WHERE NOT is_converted AND closed_at IS NULL;
+
 CREATE INDEX ix_lead_worklist  ON lead(assigned_to, next_followup_at) WHERE NOT is_converted;
 CREATE INDEX ix_lead_pool      ON lead(source_id, received_at DESC)   WHERE assigned_to IS NULL;
 CREATE INDEX ix_lead_untouched ON lead(assigned_at) WHERE contact_attempts = 0 AND assigned_to IS NOT NULL;
@@ -436,6 +457,15 @@ CREATE TABLE attribution_ledger (              -- APPEND ONLY. Source of truth f
   created_at              timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_ledger_period ON attribution_ledger(employee_id, period_key, entry_type);
+-- By ORDER, which is how the ledger is read on the hot path and was missing.
+--
+-- StatusService looks up an order's BOOKED_CREDIT on every delivery, and the
+-- month-close reconciliation asks "which delivered orders have no ledger row at
+-- all" for every rep. Without this the second degrades to a scan per employee: at
+-- 180,000 orders the whole close pack ran for over five minutes and never
+-- returned. It cost milliseconds at fixture size, which is exactly why it was
+-- only found by generating real volume.
+CREATE INDEX ix_ledger_order ON attribution_ledger(order_id);
 
 CREATE TABLE incentive_slab (
   slab_id      uuid PRIMARY KEY DEFAULT gen_random_uuid(),

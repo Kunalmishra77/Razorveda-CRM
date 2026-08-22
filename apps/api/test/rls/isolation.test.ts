@@ -140,15 +140,33 @@ describe('docs/05 — the eight isolation tests', () => {
     expect(visible, 'a rep could read phone numbers of customers they do not hold').toBe(0);
   });
 
-  it('4. no employee-role query returns more than 50 rows', async () => {
-    const [a] = reps as [(typeof reps)[0]];
-    const rows = await ctx({ userId: a.userId, role: 'EMPLOYEE' }, async (c) => {
-      const { rows } = await c.query('SELECT lead_id FROM lead LIMIT 51');
-      return rows.length;
-    });
-    // The cap is enforced in the API layer; this asserts the seeded fixture does
-    // not silently exceed it and hide a pagination bug.
-    expect(rows).toBeLessThanOrEqual(50);
+  it('4. RLS scopes a rep to her own leads — the 50-cap is an API concern', async () => {
+    const [a, b] = reps as [(typeof reps)[0], (typeof reps)[1]];
+
+    // THIS TEST USED TO BE VACUOUS, and said so in its own comment: it ran
+    // `SELECT lead_id FROM lead LIMIT 51` and asserted the result was under 50,
+    // which only ever proved the FIXTURE was small. It passed for months and then
+    // failed the moment real volume existed — not because anything broke, but
+    // because the assertion was about the seed data rather than the system.
+    //
+    // Meanwhile the cap it was supposed to guard was not implemented at all: a rep
+    // with 14,381 open leads received all 14,381, names and phone numbers, in one
+    // request (D-231). A test that cannot fail cannot catch that.
+    //
+    // What the DATABASE can honestly prove is isolation, so that is what this
+    // asserts. The row cap lives in the API and is proven where it can be
+    // exercised, in adversarial.test.ts against the running service.
+    const { own, foreign } = await ctx({ userId: a.userId, role: 'EMPLOYEE' }, async (c) => ({
+      own: await count(c, 'SELECT count(*)::text AS n FROM lead WHERE assigned_to = $1', [
+        a.employeeId,
+      ]),
+      foreign: await count(c, 'SELECT count(*)::text AS n FROM lead WHERE assigned_to = $1', [
+        b.employeeId,
+      ]),
+    }));
+
+    expect(foreign).toBe(0);
+    expect(own).toBeGreaterThan(0);
   });
 
   it('5. append-only tables reject UPDATE', async () => {
