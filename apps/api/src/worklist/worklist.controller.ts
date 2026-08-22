@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Post, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Post, Req } from '@nestjs/common';
 import pgLib from 'pg';
 import type { Pool } from 'pg';
 import { z } from 'zod';
@@ -218,13 +218,31 @@ export class WorklistController {
     @Req() request: AuthedRequest,
   ) {
     if (!body?.leadId) throw new BadRequestException({ ok: false, message: 'No lead given.' });
-    await this.activity.logPiiAccess(
+    const result = await this.activity.logPiiAccess(
       request.session!,
       body.leadId,
       body.action === 'VIEW' ? 'VIEW' : 'COPY',
       request.ip ?? null,
     );
-    return { ok: true };
+
+    // The rep is TOLD she has been locked, rather than discovering it as a
+    // mysterious sign-out. She may have an innocent explanation, and the message
+    // tells her the route to it exists.
+    if (result.locked) {
+      throw new ForbiddenException({
+        ok: false,
+        locked: true,
+        message:
+          'Your account has been locked: too many phone numbers were copied in a short time. ' +
+          'Your admin has been notified and can unlock it. If this was not what it looked like, tell them what happened.',
+      });
+    }
+
+    // `logged: false` means RLS did not show her that lead. Same 404 as everywhere
+    // else, and deliberately indistinguishable from a lead that does not exist.
+    if (!result.logged) throw new NotFoundException({ ok: false, message: 'That lead was not found.' });
+
+    return { ok: true, recentCopies: result.recentCopies ?? 0 };
   }
 }
 

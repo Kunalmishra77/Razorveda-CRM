@@ -1,5 +1,17 @@
 import type { Pool } from 'pg';
 import { withRlsContext, type RlsSession } from '../db/rls-context.js';
+import { PII_COPY_VELOCITY_WINDOW_SEC } from '@razorveda/shared';
+import { evaluateVelocity, lockAlertBody } from '../security/velocity.js';
+
+export interface PiiAccessResult {
+  /** False when RLS did not show the caller that lead — nothing was recorded. */
+  readonly logged: boolean;
+  readonly locked: boolean;
+  readonly recentCopies?: number;
+  readonly sessionsRevoked?: number;
+  readonly adminsAlerted?: number;
+  readonly reason?: string;
+}
 import {
   applyActivityToLead, storedRemark, validateActivity,
   type ActivityInput, type DispositionRule, type LeadState,
@@ -135,19 +147,79 @@ export class ActivityService {
    * is detection and attribution, not prevention — and this is the row that makes
    * attribution possible. The velocity lock in Phase 5 reads it.
    */
+  /**
+   * Record a phone number being viewed or copied, and check the velocity rule.
+   *
+   * The check runs in the SAME call as the write, not on a schedule. A lock that
+   * arrives tomorrow morning is not a lock — by then the numbers are gone.
+   */
   async logPiiAccess(
     session: RlsSession,
     leadId: string,
     action: 'VIEW' | 'COPY',
     ipAddress: string | null,
-  ): Promise<void> {
-    await withRlsContext(this.pool, session, async (client) => {
+  ): Promise<PiiAccessResult> {
+    return withRlsContext(this.pool, session, async (client) => {
       const employeeId = await this.currentEmployeeId(client);
-      await client.query(
+      const { rowCount } = await client.query(
         `INSERT INTO pii_access_log (employee_id, lead_id, customer_id, action, ip_address)
          SELECT $1, l.lead_id, l.customer_id, $3, $4::inet FROM lead l WHERE l.lead_id = $2`,
         [employeeId, leadId, action, ipAddress],
       );
+
+      // No row means RLS did not show her that lead. Nothing was logged, so there
+      // is nothing to evaluate — and saying so beats reporting a successful log.
+      if (!rowCount || !employeeId) return { logged: false, locked: false };
+
+      // A VIEW is a rep looking at the lead she is about to call. Only a COPY —
+      // the number leaving the application — counts toward the lock.
+      if (action !== 'COPY') return { logged: true, locked: false };
+
+      // SECURITY DEFINER, and this is why the lock was inert. pii_access_log is
+      // read-admin-only by design, so this SELECT run as the rep returned zero
+      // rows and the check never fired. Nothing errored; the control was simply
+      // installed and dead. Scoped to the caller inside the function, so it
+      // cannot be used to read a colleague's copy history.
+      const { rows: events } = await client.query<{ at: string; action: 'VIEW' | 'COPY' }>(
+        `SELECT at, action FROM security_recent_pii_copies($1, $2::int)`,
+        [employeeId, PII_COPY_VELOCITY_WINDOW_SEC],
+      );
+
+      const now = Date.now();
+      const decision = evaluateVelocity(
+        events.map((e) => ({ at: Number(e.at), action: e.action })),
+        now,
+      );
+      if (!decision.breached) return { logged: true, locked: false, recentCopies: decision.count };
+
+      const { rows: [name] } = await client.query<{ full_name: string }>(
+        `SELECT full_name FROM employee WHERE employee_id = $1`,
+        [employeeId],
+      );
+
+      // SECURITY DEFINER: the caller is the rep being locked. She is an EMPLOYEE,
+      // so she cannot write app_user or notification_outbox — and must not be able
+      // to. The function does the lock, the session revocation and the admin alert
+      // together so they cannot half-happen.
+      const { rows: [result] } = await client.query<{
+        locked: boolean; sessions_revoked: number; admins_alerted: number;
+      }>(
+        `SELECT * FROM security_lock_account($1, $2, $3)`,
+        [
+          employeeId,
+          decision.reason,
+          lockAlertBody(name?.full_name ?? 'A rep', decision, new Date(now)),
+        ],
+      );
+
+      return {
+        logged: true,
+        locked: result?.locked ?? false,
+        recentCopies: decision.count,
+        sessionsRevoked: result?.sessions_revoked ?? 0,
+        adminsAlerted: result?.admins_alerted ?? 0,
+        reason: decision.reason,
+      };
     });
   }
 

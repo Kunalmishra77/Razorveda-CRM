@@ -221,6 +221,112 @@ AS $$
 $$;
 GRANT EXECUTE ON FUNCTION auth_touch_last_login(uuid) TO app_role;
 
+-- Reading back your OWN recent copy events, for the velocity check.
+--
+-- pii_access_log is deliberately write-open and read-admin-only: reading is the
+-- half that protects anything, since the log is a record of who touched whose
+-- phone number. But the velocity check runs AS THE REP, in the same request as
+-- her copy, and it needs to count her last ninety seconds.
+--
+-- Without this the check ran, saw zero rows, and never fired — the lock was
+-- installed and inert. The comment above pii_access_log's policy warned that an
+-- admin-only INSERT "would have silently disabled the copy-velocity lock". It was
+-- right about the mechanism and wrong about which half: the INSERT was fixed and
+-- the SELECT was what disabled it.
+--
+-- Scoped to the caller. A rep can count her own events and nobody else's, so this
+-- doorway cannot be turned into a way to read a colleague's copy history.
+CREATE OR REPLACE FUNCTION security_recent_pii_copies(p_employee_id uuid, p_window_secs int)
+RETURNS TABLE (at double precision, action text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NOT (is_admin() OR p_employee_id = current_employee_id()) THEN
+    RAISE EXCEPTION 'security_recent_pii_copies: may only read your own access log';
+  END IF;
+
+  RETURN QUERY
+    -- extract() returns NUMERIC in Postgres 14+, not double precision. Declaring
+    -- the wrong type here raised "structure of query does not match function
+    -- result type" -- loudly, for once, which is why it took a minute rather than
+    -- a session to find.
+    SELECT (extract(epoch FROM p.occurred_at) * 1000)::double precision, p.action::text
+      FROM pii_access_log p
+     WHERE p.employee_id = p_employee_id
+       AND p.occurred_at >= now() - make_interval(secs => p_window_secs);
+END;
+$$;
+GRANT EXECUTE ON FUNCTION security_recent_pii_copies(uuid, int) TO app_role;
+
+-- The copy-velocity lock (docs/05, Phase 5 deliverable 3).
+--
+-- SECURITY DEFINER because of who is calling it: the rep being locked. She is an
+-- EMPLOYEE, so she cannot write app_user (admin-only), cannot write
+-- notification_outbox (admin-only, D-182), and must not be able to. The lock has
+-- to happen anyway, and it has to happen in the same breath as the copy event
+-- that triggered it — a lock that waits for a nightly job is not a lock.
+--
+-- All three effects in one function so they cannot half-happen: an account locked
+-- with live sessions still working, or locked with nobody told, are both worse
+-- than not locking.
+CREATE OR REPLACE FUNCTION security_lock_account(
+  p_employee_id uuid,
+  p_reason      text,
+  p_alert_body  text
+) RETURNS TABLE (locked boolean, sessions_revoked int, admins_alerted int)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_user_id   uuid;
+  v_name      text;
+  v_sessions  int := 0;
+  v_admins    int := 0;
+  v_slot      text;
+BEGIN
+  SELECT e.user_id, e.full_name INTO v_user_id, v_name
+    FROM employee e WHERE e.employee_id = p_employee_id;
+  IF v_user_id IS NULL THEN
+    RETURN QUERY SELECT false, 0, 0;
+    RETURN;
+  END IF;
+
+  -- Already locked: do nothing and say so. Re-locking would spam admins with an
+  -- alert per copy for an account that is already stopped.
+  IF EXISTS (SELECT 1 FROM app_user WHERE user_id = v_user_id AND is_locked) THEN
+    RETURN QUERY SELECT false, 0, 0;
+    RETURN;
+  END IF;
+
+  UPDATE app_user SET is_locked = true, locked_reason = p_reason WHERE user_id = v_user_id;
+
+  -- Revoking the sessions is the half that actually stops her. Without it the
+  -- lock only takes effect at her next sign-in, which may be tomorrow.
+  DELETE FROM app_session WHERE user_id = v_user_id;
+  GET DIAGNOSTICS v_sessions = ROW_COUNT;
+
+  -- One slot per lock event, so a later lock of the same account alerts again.
+  v_slot := p_employee_id::text || ':' || extract(epoch FROM now())::bigint::text;
+
+  INSERT INTO notification_outbox (kind, slot_key, recipient_id, channel, subject, body, status)
+  SELECT 'velocity_lock_alert', v_slot, u.user_id, 'IN_APP',
+         'Account locked: ' || coalesce(v_name, 'a rep'), p_alert_body, 'PENDING'
+    FROM app_user u
+   WHERE u.role IN ('ADMIN','OWNER') AND NOT u.is_locked;
+  GET DIAGNOSTICS v_admins = ROW_COUNT;
+
+  INSERT INTO audit_log (actor_id, actor_role, action, entity_type, entity_id, after_json)
+  VALUES (v_user_id, 'EMPLOYEE', 'ACCOUNT_LOCKED_VELOCITY', 'employee', p_employee_id,
+          jsonb_build_object('reason', p_reason, 'sessions_revoked', v_sessions));
+
+  RETURN QUERY SELECT true, v_sessions, v_admins;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION security_lock_account(uuid, text, text) TO app_role;
+
 -- Sessions are created and checked before any user context exists, so they carry
 -- their own policy rather than sitting in the admin-only loop. A row holds a
 -- refresh token HASH, never the token, so read access buys an attacker nothing —
