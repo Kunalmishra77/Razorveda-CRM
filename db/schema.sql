@@ -200,6 +200,13 @@ CREATE TABLE customer (
   next_due_date      date,
   do_not_call        boolean NOT NULL DEFAULT false,
   merged_into        uuid REFERENCES customer(customer_id),
+  -- Provenance, so a rollback can NAME the customers it is leaving behind.
+  -- Rollback cannot delete them: a customer created by an import may since have
+  -- been called, sold to, or merged, and destroying that is worse than keeping a
+  -- row with no live lead or order against it. Before this column they were not
+  -- merely unremovable, they were unidentifiable — the admin was told a batch
+  -- had been rolled back with no way to see what remained. (D-136)
+  ingestion_batch_id uuid,   -- FK attached after ingestion_batch exists, see below
   created_at         timestamptz NOT NULL DEFAULT now(),
   updated_at         timestamptz NOT NULL DEFAULT now()
 );
@@ -249,6 +256,14 @@ CREATE TABLE ingestion_batch (
   rolled_back_at      timestamptz,
   created_at          timestamptz NOT NULL DEFAULT now()
 );
+
+-- customer is declared long before ingestion_batch, so this provenance FK is
+-- attached here rather than inline — the same shape as sku_base_price_set_by
+-- above, and the same way it was found: a fresh build said
+-- "relation ingestion_batch does not exist".
+ALTER TABLE customer
+  ADD CONSTRAINT customer_ingestion_batch_fkey
+  FOREIGN KEY (ingestion_batch_id) REFERENCES ingestion_batch(batch_id);
 
 -- The duplicate guard is PARTIAL, and deliberately so.
 --

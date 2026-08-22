@@ -52,6 +52,6 @@ Single transaction. Leads land unassigned.
 | 4 | Payment parsing | `300 prepaid & 2200 cod` → prepaid 300, cod 2200, mode PARTIAL_PREPAID |
 | 5 | Disposition aliases | All 49 client variants map to the closed list |
 | 6 | Dedupe | `delivered_data_sample.csv` resolves 7 rows to customers already created by the Shopify fixture |
-| 7 | Rollback | Commit then roll back; all derived state restored |
+| 7 | Rollback | Commit then roll back; **no state from the batch is live** — every lead closed, every order `CANCELLED`, every ledger entry reversed, and the customers it created reported as kept. Not row-count restoration: `order_status_event` and `attribution_ledger` are append-only (rule 2), so a rollback is a compensating write, never a delete. See D-137. |
 | 8 | Admin day under 25 min | Timed run across all nine channels, under 5% exceptions |
 | 9 | **Cutover** | Sheets read-only. Full team live. |

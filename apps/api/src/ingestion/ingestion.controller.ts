@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Inject, Param, Post, Req, UseGuards } from '@nestjs/common';
 import pgLib from 'pg';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
 import {
   detectColumnShift, describeShift, isException, normaliseName, proposeMappingFromAliases,
@@ -8,6 +8,7 @@ import {
   type ColumnCheck, type TargetField, type TypeContract,
 } from '@razorveda/shared';
 import { withRlsContext } from '../db/rls-context.js';
+import { resolveIdentity, type Candidate, type MatchedOn } from '../customers/resolve-identity.js';
 import { AdminGuard, type AuthedRequest } from '../auth/session.guard.js';
 import { UploadService, DuplicateFileError } from './upload.service.js';
 import { CommitService, CommitError } from './commit.service.js';
@@ -266,12 +267,38 @@ export class IngestionController {
           : verdict.issues;
         const status = repair.lossy && verdict.status === 'VALID' ? 'WARNING' : verdict.status;
 
-        if (isException(status)) exceptions += 1;
+        // IDENTITY RESOLUTION — docs/06 §4, and CLAUDE.md rule 4.
+        //
+        // `resolved_action` used to be the literal 'CREATE' for every row, and
+        // `resolveIdentity` — defined, tested, and the module this decision
+        // belongs in — was called by nothing. Dedupe still half-worked, because
+        // commit ends in ON CONFLICT (customer.primary_phone), so rows whose
+        // PRIMARY phone already existed collapsed by accident of a unique index.
+        //
+        // What that missed is the entire point of rule 4: the mobile number is
+        // the business key and phones live in `customer_identifier`, many to one.
+        // A customer arriving on her ALT number matched nothing and became a
+        // second customer. The admin also saw "CREATE" against a row that was
+        // about to merge, so the exception review could not show the one thing
+        // it exists to show.
+        const resolution = resolveIdentity(
+          { normalisedPhone: verdict.normalised.phone, name: cleanName || null, pincode: input.pincode ?? null },
+          await this.findCandidates(client, verdict.normalised.phone, cleanName, input.pincode),
+        );
+
+        // An uncertain merge or an unkeyable row is an EXCEPTION even when every
+        // field validated: the admin has a decision to make, and the whole point
+        // of review is to surface exactly those. Without this the upload reported
+        // a clean file and then quietly committed fewer rows than it staged.
+        const needsResolution =
+          resolution.action === 'MERGE_CANDIDATE' || resolution.action === 'PARK';
+        if (isException(status) || needsResolution) exceptions += 1;
 
         await client.query(
           `INSERT INTO staging_row (batch_id, row_number, raw_json, normalised_json,
-                                    validation_status, validation_errors, resolved_action)
-           VALUES ($1,$2,$3::jsonb,$4::jsonb,$5::row_status,$6::jsonb,'CREATE')`,
+                                    validation_status, validation_errors, resolved_action,
+                                    resolved_customer_id)
+           VALUES ($1,$2,$3::jsonb,$4::jsonb,$5::row_status,$6::jsonb,$7,$8)`,
           [
             batchId, i + 1,
             JSON.stringify(Object.fromEntries(headers.map((h, k) => [h, row[k] ?? '']))),
@@ -291,6 +318,8 @@ export class IngestionController {
               callerName: field(row, 'caller_name') ?? null,
             }),
             status, JSON.stringify(issues),
+            resolution.action,
+            'customerId' in resolution ? resolution.customerId : null,
           ],
         );
       }
@@ -298,6 +327,64 @@ export class IngestionController {
       await client.query(`UPDATE ingestion_batch SET status = 'REVIEW' WHERE batch_id = $1`, [batchId]);
       return { rows: rows.length, exceptions, clean: rows.length - exceptions };
     });
+  }
+  /**
+   * The SQL half of identity resolution.
+   *
+   * `resolve-identity.ts` deliberately does NOT compute name similarity — that is
+   * pg_trgm's job (D-14), and reimplementing trigram scoring in TypeScript would
+   * create a second source of truth for the most consequential number in dedupe.
+   * So this gathers scored candidates and the pure function decides.
+   *
+   * Three ways in, in the order the resolver ranks them:
+   *   PRIMARY_PHONE  the phone is a customer's own primary number
+   *   IDENTIFIER     the phone is ANY number we hold for a customer, which is
+   *                  what makes the mobile a business key rather than a column
+   *                  (rule 4) — this is the arm that was missing entirely
+   *   FUZZY          name similarity AND a matching pincode, never name alone
+   */
+  private async findCandidates(
+    client: PoolClient,
+    phone: string | null,
+    name: string,
+    pincode: string | undefined,
+  ): Promise<Candidate[]> {
+    const candidates: Candidate[] = [];
+
+    if (phone) {
+      const { rows } = await client.query<{ customer_id: string; matched_on: string }>(
+        `SELECT customer_id, 'PRIMARY_PHONE' AS matched_on FROM customer WHERE primary_phone = $1
+         UNION
+         SELECT customer_id, 'IDENTIFIER'    AS matched_on FROM customer_identifier
+          WHERE type IN ('MOBILE','ALT_MOBILE','WHATSAPP') AND value = $1`,
+        [phone],
+      );
+      for (const r of rows) {
+        candidates.push({ customerId: r.customer_id, matchedOn: r.matched_on as MatchedOn });
+      }
+    }
+
+    // Fuzzy only when there is something to be fuzzy about. A blank name and a
+    // pincode would otherwise match every customer in that pincode.
+    if (name.trim() !== '' && pincode) {
+      const { rows } = await client.query<{ customer_id: string; sim: number }>(
+        `SELECT customer_id, similarity(full_name, $1) AS sim
+           FROM customer
+          WHERE full_name IS NOT NULL AND pincode = $2 AND full_name % $1
+          ORDER BY sim DESC LIMIT 5`,
+        [name, pincode],
+      );
+      for (const r of rows) {
+        candidates.push({
+          customerId: r.customer_id,
+          matchedOn: 'FUZZY',
+          nameSimilarity: Number(r.sim),
+          pincodeMatches: true,
+        });
+      }
+    }
+
+    return candidates;
   }
 }
 

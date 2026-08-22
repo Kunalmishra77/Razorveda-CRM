@@ -19,7 +19,10 @@ export const ROLLBACK_WINDOW_DAYS = 7;
 export interface CommitResult {
   readonly batchId: string;
   readonly customersCreated: number;
-  readonly customersUpdated: number;
+  /** Rows the resolver matched to a customer that already existed. */
+  readonly customersMatched: number;
+  /** Rows held back for an admin: an uncertain merge, or no usable key at all. */
+  readonly rowsHeldForReview: number;
   readonly leadsCreated: number;
   readonly ordersCreated: number;
   readonly rowsSkipped: number;
@@ -31,6 +34,20 @@ export interface RollbackResult {
   readonly leadsClosed: number;
   readonly ordersCancelled: number;
   readonly ledgerReversals: number;
+  /**
+   * Customers this batch created that rollback deliberately KEEPS.
+   *
+   * Rollback neutralises, it does not delete: `order_status_event` and
+   * `attribution_ledger` are append-only (CLAUDE.md rule 2), so undoing a batch
+   * means writing compensating rows, not removing history. Customers go further —
+   * one created by an import may since have been called, sold to, or merged, and
+   * destroying that is worse than leaving a row with no live lead or order.
+   *
+   * So the number is reported rather than hidden. Before `customer.ingestion_batch_id`
+   * these rows were not merely unremovable, they were unidentifiable, and the admin
+   * was told a batch had been rolled back with no way to see what remained.
+   */
+  readonly customersKept: number;
 }
 
 export class CommitError extends Error {
@@ -79,12 +96,26 @@ export class CommitService {
         `SELECT staging_id, normalised_json, resolved_customer_id, resolved_action, validation_status
            FROM staging_row
           WHERE batch_id = $1 AND validation_status IN ('VALID','WARNING','DUPLICATE')
+            -- A row the resolver could not settle is NOT committable. MERGE_CANDIDATE
+            -- (0.80-0.95) is a judgement only an admin can make, and PARK has no
+            -- usable key at all. Both are kept and stay reviewable (F2); committing
+            -- them would either invent a duplicate customer or guess at a merge.
+            AND resolved_action NOT IN ('MERGE_CANDIDATE','PARK')
           ORDER BY row_number`,
         [batchId],
       );
 
       let customersCreated = 0;
-      let customersUpdated = 0;
+      let customersMatched = 0;
+
+      // Held back above by the resolved_action filter. Reported so the admin is
+      // told the number rather than discovering it by comparing counts.
+      const { rows: [held] } = await client.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM staging_row
+          WHERE batch_id = $1 AND resolved_action IN ('MERGE_CANDIDATE','PARK')`,
+        [batchId],
+      );
+      const rowsHeldForReview = Number(held?.n ?? '0');
       let leadsCreated = 0;
       let ordersCreated = 0;
 
@@ -92,9 +123,14 @@ export class CommitService {
         const data = row.normalised_json ?? {};
         const phone = typeof data['phone'] === 'string' ? data['phone'] : null;
 
-        const customerId = await this.upsertCustomer(client, row, data, phone);
-        if (row.resolved_action === 'CREATE') customersCreated += 1;
-        else customersUpdated += 1;
+        const customerId = await this.upsertCustomer(client, row, data, phone, batchId);
+        // Counted from what the RESOLVER decided, not from the row count. This
+        // used to test for 'CREATE', a value nothing ever wrote, so every row
+        // fell to the else branch... and before that the action was the literal
+        // 'CREATE' for every row, so the admin was told a ten-row file created
+        // ten customers when it had created three.
+        if (row.resolved_action === 'UPDATE_EXISTING') customersMatched += 1;
+        else customersCreated += 1;
 
         // Leads land UNASSIGNED. assigned_to and assigned_at stay null — the
         // absence of an assignment IS the pool (docs/02), and D-02 forbids any
@@ -136,14 +172,15 @@ export class CommitService {
          VALUES ($1,$2::user_role,'BATCH_COMMITTED','ingestion_batch',$3,$4::jsonb)`,
         [
           session.userId, session.role, batchId,
-          JSON.stringify({ customersCreated, customersUpdated, leadsCreated, ordersCreated }),
+          JSON.stringify({ customersCreated, customersMatched, rowsHeldForReview, leadsCreated, ordersCreated }),
         ],
       );
 
       return {
         batchId,
         customersCreated,
-        customersUpdated,
+        customersMatched,
+        rowsHeldForReview,
         leadsCreated,
         ordersCreated,
         rowsSkipped: batch.row_count - staged.length,
@@ -278,6 +315,12 @@ export class CommitService {
         [batchId],
       );
 
+      const { rows: [kept] } = await client.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM customer WHERE ingestion_batch_id = $1`,
+        [batchId],
+      );
+      const customersKept = Number(kept?.n ?? '0');
+
       await client.query(
         `INSERT INTO audit_log (actor_id, actor_role, action, entity_type, entity_id, after_json)
          VALUES ($1,$2::user_role,'BATCH_ROLLED_BACK','ingestion_batch',$3,$4::jsonb)`,
@@ -289,6 +332,7 @@ export class CommitService {
             leadsClosed: closed.length,
             ordersCancelled: cancellable.length,
             ledgerReversals: reversals.length,
+            customersKept,
           }),
         ],
       );
@@ -299,6 +343,7 @@ export class CommitService {
         leadsClosed: closed.length,
         ordersCancelled: cancellable.length,
         ledgerReversals: reversals.length,
+        customersKept,
       };
     });
   }
@@ -367,21 +412,23 @@ export class CommitService {
     row: StagedRow,
     data: Record<string, unknown>,
     phone: string | null,
+    batchId: string,
   ): Promise<string> {
     if (row.resolved_customer_id) return row.resolved_customer_id;
 
     const { rows } = await client.query<{ customer_id: string }>(
-      `INSERT INTO customer (primary_phone, full_name, city, state, pincode)
-       VALUES ($1,$2,$3,$4,$5)
+      `INSERT INTO customer (primary_phone, full_name, city, state, pincode, ingestion_batch_id)
+       VALUES ($1,$2,$3,$4,$5,$6)
        ON CONFLICT (primary_phone) DO UPDATE SET full_name = coalesce(EXCLUDED.full_name, customer.full_name),
                                                  updated_at = now()
-    RETURNING customer_id`,
+    RETURNING customer_id, (xmax = 0) AS inserted`,
       [
         phone,
         typeof data['name'] === 'string' ? data['name'] : null,
         typeof data['city'] === 'string' ? data['city'] : null,
         typeof data['state'] === 'string' ? data['state'] : null,
         typeof data['pincode'] === 'string' ? data['pincode'] : null,
+        batchId,
       ],
     );
     const created = rows[0];
