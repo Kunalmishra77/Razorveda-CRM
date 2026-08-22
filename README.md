@@ -177,6 +177,21 @@ Full list in `CLAUDE.md`. The ones that bite first:
 
 ---
 
+## Runbooks
+
+Written for the people who use the system, not for developers. Every instruction
+names a real screen.
+
+- [`docs/runbooks/admin.md`](docs/runbooks/admin.md) — first-day setup, the daily
+  upload and review loop, the month close, and what to do when an account locks or
+  somebody leaves.
+- [`docs/runbooks/rep.md`](docs/runbooks/rep.md) — the worklist, logging a call,
+  booking an order, and what a rep cannot do and why.
+
+Phase 5 exit criterion 5 asks for these **plus sign-off from both groups**. The
+sign-off is the client's half and has not happened: nobody outside this repository
+has read them yet.
+
 ## Reading order for a new developer
 
 1. `CLAUDE.md` — standing context, including §7b, the corrections that cost two audit passes
