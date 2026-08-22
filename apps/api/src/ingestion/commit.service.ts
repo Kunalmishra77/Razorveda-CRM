@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { withRlsContext, type RlsSession } from '../db/rls-context.js';
 
@@ -406,15 +407,33 @@ export class CommitService {
     const amount = String(data['amount'] ?? '').trim();
     if (amount === '') return false;
 
-    const externalRef = typeof data['externalRef'] === 'string' ? data['externalRef'] : null;
-    const orderNumber = externalRef ?? `RV-${batchId.slice(0, 8)}-${customerId.slice(0, 8)}`;
+    const externalRef =
+      typeof data['externalRef'] === 'string' && data['externalRef'].trim() !== ''
+        ? data['externalRef'].trim()
+        : null;
+
+    // The fallback used to be `RV-<batch>-<customer>`, which is not unique per
+    // ORDER — it is unique per customer per batch. A repeat customer with two
+    // orders in one file produced the same order_number twice, the second hit
+    // ON CONFLICT DO NOTHING, and the row was dropped with no error and no
+    // exception shown to the admin. Repeat buyers are a core concept here
+    // (Buyer Fq, DELIVERED_REPEAT), so this lost exactly the rows that matter
+    // most. The natural key from docs/06 §Idempotency is (phone, order_date,
+    // final_value) — using it means a genuine re-upload of the same order still
+    // collapses, while two DIFFERENT orders no longer collide.
+    const naturalKey = createHash('sha256')
+      .update(`${customerId}|${String(data['date'] ?? '')}|${amount}`)
+      .digest('hex')
+      .slice(0, 12);
+    const orderNumber = externalRef ?? `RV-${batchId.slice(0, 8)}-${naturalKey}`;
 
     const { rows } = await client.query<{ order_id: string }>(
       `INSERT INTO "order" (order_number, customer_id, lead_id, source_id, order_date,
                             final_value, prepaid_amount, cod_amount, payment_mode,
-                            ship_state, ship_pincode, ingestion_batch_id, current_status)
+                            ship_state, ship_pincode, ingestion_batch_id,
+                            legacy_credit_value, current_status)
        SELECT $1,$2,$3, b.source_id, coalesce($4::date, CURRENT_DATE), $5, $6, $7,
-              coalesce($8,'UNKNOWN')::payment_mode, $9, $10, $11, 'PENDING'
+              coalesce($8,'UNKNOWN')::payment_mode, $9, $10, $11, $12, 'PENDING'
          FROM ingestion_batch b WHERE b.batch_id = $11
        ON CONFLICT (order_number) DO NOTHING
     RETURNING order_id`,
@@ -428,6 +447,12 @@ export class CommitService {
         typeof data['state'] === 'string' ? data['state'] : null,
         typeof data['pincode'] === 'string' ? data['pincode'] : null,
         batchId,
+        // Reconciliation only. docs/06 §4: never used in a metric, a score or an
+        // incentive — it exists so the backfill can show where the client's
+        // manually typed credit disagreed with the computed one.
+        typeof data['legacyCreditValue'] === 'string' && data['legacyCreditValue'].trim() !== ''
+          ? data['legacyCreditValue']
+          : null,
       ],
     );
 

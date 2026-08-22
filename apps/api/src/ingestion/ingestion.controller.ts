@@ -3,8 +3,9 @@ import pgLib from 'pg';
 import type { Pool } from 'pg';
 import { z } from 'zod';
 import {
-  detectColumnShift, describeShift, isException, normaliseName, repairEncodingDetailed,
-  validateRow, type ColumnCheck, type TypeContract,
+  detectColumnShift, describeShift, isException, normaliseName, proposeMappingFromAliases,
+  repairEncodingDetailed, validateRow,
+  type ColumnCheck, type TargetField, type TypeContract,
 } from '@razorveda/shared';
 import { withRlsContext } from '../db/rls-context.js';
 import { AdminGuard, type AuthedRequest } from '../auth/session.guard.js';
@@ -190,26 +191,51 @@ export class IngestionController {
     rows: readonly string[][],
     dateLocale: 'DMY' | 'MDY' | 'YMD',
   ) {
-    const index = (name: string): number =>
-      headers.findIndex((h) => h.toLowerCase() === name.toLowerCase());
+    // THE CERTIFIED MAPPER, not a second set of hardcoded header lookups.
+    //
+    // This function used to reach for columns by name itself — `at(row, 'Name')
+    // ?? at(row, 'Customer name')` and so on. `proposeMappingFromAliases` existed
+    // the whole time, with the B8 deny-list and eleven tests behind it, and was
+    // never called by anything. Two mapping implementations, and the tested one
+    // was the dead one.
+    //
+    // What the live one silently did NOT read: `Order id`, so every ingested
+    // order fell back to `RV-<batch>-<customer>` and a repeat customer's SECOND
+    // order in the same file hit ON CONFLICT DO NOTHING and vanished without a
+    // message. `Final amount`, so `legacy_credit_value` was always null and the
+    // reconciliation report docs/06 §4 promises had nothing to reconcile. And the
+    // parsed payment mode, so every order committed as UNKNOWN.
+    const proposal = proposeMappingFromAliases(headers);
+    const columnOf = new Map<TargetField, number>();
+    proposal.columns.forEach((c, i) => {
+      if (c.targetField && !columnOf.has(c.targetField)) columnOf.set(c.targetField, i);
+    });
 
-    const at = (row: readonly string[], name: string): string | undefined => {
-      const i = index(name);
-      return i === -1 ? undefined : row[i];
+    const field = (row: readonly string[], target: TargetField): string | undefined => {
+      const i = columnOf.get(target);
+      return i === undefined ? undefined : row[i];
     };
 
     return withRlsContext(this.pool, session!, async (client) => {
       let exceptions = 0;
       for (const [i, row] of rows.entries()) {
+        // `final_value` comes from Total amount / Amount, and falls back to
+        // `Final amount` ONLY when neither is present (docs/06 §Rules 1). The
+        // words are inverted in the client's sheets: their "Final amount" is the
+        // employee credit, not the order total, which is why it can never be the
+        // first choice and why the mapper denies it the `final_value` target.
+        const totalAmount = field(row, 'final_value');
+        const legacyCredit = field(row, 'legacy_credit_value');
+
         const input = {
-          date: at(row, 'Date') ?? at(row, 'created_time'),
-          name: at(row, 'Name') ?? at(row, 'Customer name') ?? at(row, 'CustomerName') ?? at(row, 'full_name'),
-          phone: at(row, 'Number') ?? at(row, 'Phone no') ?? at(row, 'Phoneno') ?? at(row, 'phone_number'),
-          amount: at(row, 'Amount') ?? at(row, 'Total amount'),
-          paymentMode: at(row, 'Payment Mode') ?? at(row, 'PaymentMode'),
-          pincode: at(row, 'Pincode'),
-          state: at(row, 'State') ?? at(row, 'state'),
-          productText: at(row, 'Product detail') ?? at(row, 'ProductDeatil') ?? at(row, 'Product'),
+          date: field(row, 'order_date') ?? field(row, 'delivered_date'),
+          name: field(row, 'full_name'),
+          phone: field(row, 'primary_phone'),
+          amount: totalAmount ?? legacyCredit,
+          paymentMode: field(row, 'payment_mode_text'),
+          pincode: field(row, 'pincode'),
+          state: field(row, 'state'),
+          productText: field(row, 'product_text'),
         };
 
         const verdict = validateRow(input, {
@@ -252,8 +278,17 @@ export class IngestionController {
             JSON.stringify({
               name: cleanName, phone: verdict.normalised.phone, date: verdict.normalised.date,
               amount: input.amount, prepaidAmount: verdict.normalised.prepaidAmount,
-              codAmount: verdict.normalised.codAmount, pincode: input.pincode,
-              state: input.state, productText: input.productText,
+              codAmount: verdict.normalised.codAmount,
+              // The three that were being dropped between parsing and staging.
+              paymentMode: verdict.normalised.paymentMode,
+              externalRef: field(row, 'external_ref') ?? null,
+              legacyCreditValue: totalAmount ? (legacyCredit ?? null) : null,
+              pincode: input.pincode, state: input.state, city: field(row, 'city') ?? null,
+              productText: input.productText,
+              awbNumber: field(row, 'awb_number') ?? null,
+              statusText: field(row, 'status_text') ?? null,
+              remark: field(row, 'remark') ?? field(row, 'reason') ?? null,
+              callerName: field(row, 'caller_name') ?? null,
             }),
             status, JSON.stringify(issues),
           ],

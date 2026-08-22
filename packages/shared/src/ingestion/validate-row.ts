@@ -1,5 +1,5 @@
 import { normaliseDate, normalisePhone, parsePayment } from '../normalise/index.js';
-import type { RowStatus } from '../enums.js';
+import type { RowStatus, PaymentMode } from '../enums.js';
 
 /**
  * Row-level validation (docs/06 stage 5).
@@ -61,6 +61,16 @@ export interface RowVerdict {
     readonly date: string | null;
     readonly prepaidAmount: string | null;
     readonly codAmount: string | null;
+    /**
+     * The parsed mode, carried alongside the split.
+     *
+     * Dropping this was a silent data loss: commit read `paymentMode` from the
+     * normalised object, found nothing, and coalesced EVERY ingested order to
+     * UNKNOWN — including the ones whose split had parsed perfectly. The prepaid
+     * ratio is the strongest RTO predictor available (F5), and it was being
+     * thrown away one field short of the finish line.
+     */
+    readonly paymentMode: PaymentMode | null;
   };
 }
 
@@ -178,10 +188,12 @@ export function validateRow(input: RowInput, ctx: RowContext): RowVerdict {
   // --- payment split -------------------------------------------------------
   let prepaidAmount: string | null = null;
   let codAmount: string | null = null;
+  let paymentMode: PaymentMode | null = null;
   if (input.paymentMode != null && String(input.paymentMode).trim() !== '') {
     const p = parsePayment(input.paymentMode, amount !== null && Number.isFinite(amount) ? String(amount) : '0');
     prepaidAmount = p.prepaidAmount;
     codAmount = p.codAmount;
+    paymentMode = p.mode;
     if (p.warning) {
       issues.push({ field: 'paymentMode', code: 'PAYMENT_UNCLEAR', severity: 'WARNING', message: p.warning });
       statuses.push('WARNING');
@@ -254,7 +266,7 @@ export function validateRow(input: RowInput, ctx: RowContext): RowVerdict {
   return {
     status: worst(statuses),
     issues,
-    normalised: { phone, date, prepaidAmount, codAmount },
+    normalised: { phone, date, prepaidAmount, codAmount, paymentMode },
   };
 }
 
