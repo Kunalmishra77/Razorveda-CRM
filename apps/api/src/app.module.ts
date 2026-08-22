@@ -13,6 +13,9 @@ import { AssignmentController } from './assignment/assignment.controller.js';
 import { AssignmentService } from './assignment/assignment.service.js';
 import { WorklistController } from './worklist/worklist.controller.js';
 import { OrdersController } from './orders/orders.controller.js';
+import { StatusService } from './orders/status.service.js';
+import { RepeatService } from './leads/repeat.service.js';
+import { RepeatController } from './leads/repeat.controller.js';
 import { ActivityService } from './activity/activity.service.js';
 import { createAppPool } from './db/pool.js';
 import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
@@ -34,6 +37,7 @@ import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
     AssignmentController,
     WorklistController,
     OrdersController,
+    RepeatController,
   ],
   providers: [
     { provide: pg.Pool, useFactory: (): pg.Pool => createAppPool() },
@@ -57,6 +61,8 @@ import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
       inject: [pg.Pool],
     },
     { provide: ActivityService, useFactory: (pool: pg.Pool) => new ActivityService(pool), inject: [pg.Pool] },
+    { provide: StatusService, useFactory: (pool: pg.Pool) => new StatusService(pool), inject: [pg.Pool] },
+    { provide: RepeatService, useFactory: (pool: pg.Pool) => new RepeatService(pool), inject: [pg.Pool] },
     { provide: APP_GUARD, useClass: SessionGuard },
   ],
 })

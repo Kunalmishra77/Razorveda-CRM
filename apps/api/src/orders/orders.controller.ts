@@ -1,11 +1,13 @@
-import { Body, Controller, Get, Inject, Post, Req, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post, Req, BadRequestException } from '@nestjs/common';
 import pgLib from 'pg';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
-import { money, sumMoney, mulQuantity, subMoney } from '@razorveda/shared';
+import { money, sumMoney, mulQuantity, subMoney, OrderStatus } from '@razorveda/shared';
 import { withRlsContext } from '../db/rls-context.js';
 import type { AuthedRequest } from '../auth/session.guard.js';
+import type { OrderStatus as OrderStatusValue } from '@razorveda/shared';
 import { AttributionError, computeAttribution, type AttributionLine, type AttributionRule } from './attribution.js';
+import { StatusService } from './status.service.js';
 
 /**
  * Order Entry (docs/07 §4).
@@ -24,6 +26,12 @@ const lineSchema = z.object({
   unitPrice: z.string().regex(/^\d{1,8}(\.\d{1,2})?$/),
 });
 
+/** The closed vocabulary, straight from the enum — never a free-text status. */
+const statusSchema = z.object({
+  to: z.enum(Object.values(OrderStatus) as [string, ...string[]]),
+  source: z.string().min(1).max(40).default('MANUAL'),
+});
+
 const orderSchema = z.object({
   leadId: z.string().uuid(),
   lines: z.array(lineSchema).min(1, 'An order needs at least one product.'),
@@ -35,7 +43,25 @@ const orderSchema = z.object({
 
 @Controller('orders')
 export class OrdersController {
-  constructor(@Inject(pgLib.Pool) private readonly pool: Pool) {}
+  constructor(
+    @Inject(pgLib.Pool) private readonly pool: Pool,
+    @Inject(StatusService) private readonly status: StatusService,
+  ) {}
+
+  /**
+   * Move an order to a new status (Phase 3 deliverable 2).
+   *
+   * This is the only way an order's status changes, so the transition guard and
+   * the ledger effect are enforced rather than merely available. Delivery is what
+   * realises credit — before this endpoint existed, no order could reach
+   * DELIVERED and no rep could ever be paid.
+   */
+  @Post(':id/status')
+  async setStatus(@Param('id') id: string, @Body() body: unknown, @Req() request: AuthedRequest) {
+    const parsed = statusSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message);
+    return this.status.apply(request.session!, id, parsed.data.to as OrderStatusValue, { source: parsed.data.source });
+  }
 
   /** SKUs for the picker, with live pricing. */
   @Get('skus')

@@ -43,7 +43,7 @@ Due reminders · 48h untouched alert to admin · 72h auto-return to pool with an
 |---|---|---|
 | 1 | Every money path tested | 100% branch coverage on the attribution module |
 | 2 | Realised credit <= booked credit **per order** (not per period — see metric dictionary section 6). Property test over generated order histories at ORDER grain| Property test over generated order histories |
-| 3 | Clawback fires | Deliver then RTO an order; ledger nets to zero for that order |
+| 3 | Clawback fires | Deliver then RTO an order; the **realised** ledger (`is_realised = true`) nets to zero for that order. The provisional `BOOKED_CREDIT` row stays: Booked Value is status-independent by definition (docs/03 §2), and rule 3 says nothing is ever paid on it. Netting ALL entries to zero would require erasing the booking. See D-139. |
 | 4 | Incentive reconciles | One month computed by the system matches a manual calculation |
 | 5 | Repeat-due fires | Deliver an order with usage_days=30; lead appears on day 25 in the owner's worklist |
 | 6 | 72h recall | Assign a lead, no activity, advance the clock; lead returns to the pool |
