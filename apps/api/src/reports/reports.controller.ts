@@ -3,6 +3,7 @@ import type { Response } from 'express';
 import { AdminGuard, type AuthedRequest } from '../auth/session.guard.js';
 import { ReportsService, parsePeriod } from './reports.service.js';
 import { ExportService } from './export.service.js';
+import { ClosePackService } from './close-pack.service.js';
 
 /**
  * The daily reports (docs/04) and their export.
@@ -18,7 +19,25 @@ export class ReportsController {
   constructor(
     @Inject(ReportsService) private readonly reports: ReportsService,
     @Inject(ExportService) private readonly exports: ExportService,
+    @Inject(ClosePackService) private readonly closePack: ClosePackService,
   ) {}
+
+  /**
+   * The month-close pack — all nine sections in one call.
+   *
+   * Assembled together rather than fetched section by section: nine separate
+   * requests could straddle a matview refresh and disagree with each other, which
+   * is the "two reports, two answers" problem the whole system replaces.
+   */
+  @Get('close-pack/build')
+  async build(
+    @Query('from') from: string | undefined,
+    @Query('to') to: string | undefined,
+    @Req() request: AuthedRequest,
+  ) {
+    const period = parsePeriod(from, to);
+    return { ok: true, ...(await this.closePack.build(request.session!, period)) };
+  }
 
   @Get(':key')
   async run(
