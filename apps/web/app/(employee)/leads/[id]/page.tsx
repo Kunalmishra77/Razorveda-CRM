@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { api, ApiError } from '../../../../lib/api';
 import { s, T } from '../../../../lib/ui';
+import { OrderEntry } from './OrderEntry';
 
 /**
  * Lead Detail (docs/07 §4).
@@ -226,6 +227,8 @@ export default function LeadDetail() {
         </div>
 
         <div>
+          <OrderEntry leadId={id} onBooked={() => void load()} />
+
           <section style={s.card} aria-label="Customer 360">
             <div style={s.cardHead}><span>Customer</span><span /></div>
             <Row label="Stage" value={lead.stage} />

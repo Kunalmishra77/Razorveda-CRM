@@ -85,8 +85,12 @@ ALTER TABLE attribution_ledger ENABLE ROW LEVEL SECURITY;
 ALTER TABLE attribution_ledger FORCE ROW LEVEL SECURITY;
 CREATE POLICY ledger_read ON attribution_ledger FOR SELECT TO app_role
   USING (is_admin() OR employee_id = current_employee_id());
+-- A rep may write a ledger row ONLY for herself. Admin-only was too tight: a rep
+-- booking an order legitimately creates its provisional BOOKED_CREDIT, and the
+-- insert was refused. Crediting anyone else remains impossible, which is the part
+-- that matters — nobody can quietly move credit onto another rep's ledger.
 CREATE POLICY ledger_write ON attribution_ledger FOR INSERT TO app_role
-  WITH CHECK (is_admin());
+  WITH CHECK (is_admin() OR employee_id = current_employee_id());
 
 -- ─── scores — read own ────────────────────────────────────────────────────
 ALTER TABLE employee_score_daily ENABLE ROW LEVEL SECURITY;
@@ -265,7 +269,20 @@ CREATE POLICY order_status_event_isolation ON order_status_event FOR ALL TO app_
         AND o.booked_by_employee_id = current_employee_id()
     )
   )
-  WITH CHECK (is_admin());
+  -- WITH CHECK mirrors USING rather than being admin-only.
+  --
+  -- It was `is_admin()`, which meant a rep booking an order could not write its
+  -- own opening PENDING event — the order insert succeeded and the very next
+  -- statement was refused. Found by booking one. A rep can still only write
+  -- events for orders SHE booked; she cannot touch anyone else's.
+  WITH CHECK (
+    is_admin()
+    OR EXISTS (
+      SELECT 1 FROM "order" o
+      WHERE o.order_id = order_status_event.order_id
+        AND o.booked_by_employee_id = current_employee_id()
+    )
+  );
 
 ALTER TABLE order_credit_split ENABLE ROW LEVEL SECURITY;
 ALTER TABLE order_credit_split FORCE  ROW LEVEL SECURITY;

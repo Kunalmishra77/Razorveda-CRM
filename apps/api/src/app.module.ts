@@ -12,6 +12,7 @@ import { CommitService } from './ingestion/commit.service.js';
 import { AssignmentController } from './assignment/assignment.controller.js';
 import { AssignmentService } from './assignment/assignment.service.js';
 import { WorklistController } from './worklist/worklist.controller.js';
+import { OrdersController } from './orders/orders.controller.js';
 import { ActivityService } from './activity/activity.service.js';
 import { createAppPool } from './db/pool.js';
 import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
@@ -32,6 +33,7 @@ import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
     IngestionController,
     AssignmentController,
     WorklistController,
+    OrdersController,
   ],
   providers: [
     { provide: pg.Pool, useFactory: (): pg.Pool => createAppPool() },
