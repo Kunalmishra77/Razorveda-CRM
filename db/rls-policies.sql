@@ -97,6 +97,17 @@ ALTER TABLE employee_score_daily ENABLE ROW LEVEL SECURITY;
 ALTER TABLE employee_score_daily FORCE ROW LEVEL SECURITY;
 CREATE POLICY score_read ON employee_score_daily FOR SELECT TO app_role
   USING (is_admin() OR employee_id = current_employee_id());
+-- The nightly EES run writes a row per rep, so it needs more than SELECT. This
+-- table shipped with a read policy and NO write policy at all, which meant the
+-- score could never be written by anything — the fifth instance of a read policy
+-- without its write half (audit_log, order_status_event, attribution_ledger,
+-- app_user were the others). INSERT raises rather than filtering silently, so
+-- this one at least announced itself.
+--
+-- Admin only, and deliberately: a rep who could write `employee_score_daily`
+-- could set her own efficiency score.
+CREATE POLICY score_write ON employee_score_daily FOR ALL TO app_role
+  USING (is_admin()) WITH CHECK (is_admin());
 
 -- ─── assignment log — read own ────────────────────────────────────────────
 ALTER TABLE lead_assignment ENABLE ROW LEVEL SECURITY;

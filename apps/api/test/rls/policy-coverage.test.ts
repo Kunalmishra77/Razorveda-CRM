@@ -20,6 +20,13 @@ import pg from 'pg';
  * and the SQL.
  *
  * The allowlist below is the ONLY escape, and every entry needs a reason.
+ *
+ * The first version of this test only asked "is there A policy?", and that was
+ * too weak. `employee_score_daily` had a SELECT policy and no write policy at
+ * all, so it passed while nothing in the system could write a score. A read
+ * policy without its write half is the single most repeated defect in this
+ * codebase — audit_log, order_status_event, attribution_ledger, app_user and
+ * then this one — so coverage is now checked per COMMAND, not per table.
  */
 
 const DATABASE_URL = process.env['DATABASE_URL'];
@@ -50,6 +57,8 @@ interface TableRow {
   rls_on: boolean;
   forced: boolean;
   policies: number;
+  /** pg_policy.polcmd: '*' ALL, 'r' SELECT, 'a' INSERT, 'w' UPDATE, 'd' DELETE. */
+  commands: string[];
 }
 
 const tables = async (): Promise<TableRow[]> => {
@@ -57,7 +66,9 @@ const tables = async (): Promise<TableRow[]> => {
     `SELECT c.relname AS table_name,
             c.relrowsecurity  AS rls_on,
             c.relforcerowsecurity AS forced,
-            (SELECT count(*)::int FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
+            (SELECT count(*)::int FROM pg_policy p WHERE p.polrelid = c.oid) AS policies,
+            coalesce((SELECT array_agg(DISTINCT p.polcmd::text)
+                        FROM pg_policy p WHERE p.polrelid = c.oid), '{}') AS commands
        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'public' AND c.relkind = 'r'
       ORDER BY c.relname`,
@@ -96,6 +107,26 @@ describe('RLS coverage', () => {
       .filter((t) => t.rls_on && t.policies === 0 && !(t.table_name in EXEMPT))
       .map((t) => t.table_name);
     expect(policyless).toEqual([]);
+  });
+
+  it('every table can be WRITTEN, not just read', async () => {
+    // The check that would have caught employee_score_daily. A SELECT-only policy
+    // set denies every insert, which fails safe and also means the feature simply
+    // does not work — discovered at runtime, in the one case that raises, and
+    // silently in the several that do not.
+    const readOnly = (await tables())
+      .filter((t) => t.rls_on && !(t.table_name in EXEMPT))
+      .filter((t) => !t.commands.includes('*') && !t.commands.includes('a'))
+      .map((t) => t.table_name);
+    expect(readOnly).toEqual([]);
+  });
+
+  it('every table can be READ, so a policy set is never write-only', async () => {
+    const writeOnly = (await tables())
+      .filter((t) => t.rls_on && !(t.table_name in EXEMPT))
+      .filter((t) => !t.commands.includes('*') && !t.commands.includes('r'))
+      .map((t) => t.table_name);
+    expect(writeOnly).toEqual([]);
   });
 
   it('every exemption is still a real table, so the list cannot rot', async () => {
