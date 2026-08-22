@@ -9,7 +9,11 @@ import { assertLocalTarget, parseDatabaseUrl } from '../src/env.js';
 
 const LOCAL = 'postgresql://razorveda_migrator:localdev@localhost:5432/razorveda';
 const COOLIFY_TAILSCALE = 'postgresql://razorbill_crm:pw@127.0.0.1:55432/razorbill_crm';
-const COOLIFY_INTERNAL = 'postgresql://razorbill_crm:pw@w04cscwsccsc880sc488cscg:5432/razorbill_crm';
+// A Coolify service hostname: a long opaque container id, no dots, resolvable
+// only inside the deploy network. The real one is deliberately not written down
+// here — the guard matches on shape, not on a known host, so a placeholder of the
+// same shape tests exactly as much and keeps infrastructure ids out of the repo.
+const COOLIFY_INTERNAL = 'postgresql://razorbill_crm:pw@k00000000000000000000000:5432/razorbill_crm';
 
 describe('parseDatabaseUrl', () => {
   it('pulls apart a local URL', () => {
@@ -56,7 +60,7 @@ describe('assertLocalTarget — the D-17 guard', () => {
       expect.unreachable('guard should have thrown');
     } catch (e) {
       const msg = (e as Error).message;
-      expect(msg).toContain('w04cscwsccsc880sc488cscg');
+      expect(msg).toContain(parseDatabaseUrl(COOLIFY_INTERNAL).host);
       expect(msg).toContain('razorbill_crm');
     }
   });
