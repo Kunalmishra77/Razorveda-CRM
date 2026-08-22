@@ -31,7 +31,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      # 660 tests across the four workspaces. None of these need a database.
+      # 594 tests across the four workspaces. None of these need a database.
       - name: Unit tests
         run: npm test
 
@@ -43,22 +43,36 @@ jobs:
         with: { node-version: 20, cache: npm }
       - run: npm ci
 
-      # Reported, never enforced — deliberately.
+      # ENFORCING AT CRITICAL, REPORTING BELOW IT.
       #
-      # The tree carries findings this project did not choose, including a high in
-      # `multer` reached through @nestjs/platform-express on the upload path
-      # (D-170). Failing the build on `npm audit` today means a permanently red
-      # pipeline that everyone learns to ignore, which is worse than a report
-      # someone reads. `|| true` keeps the JOB green so the summary is the signal,
-      # not the exit code.
+      # This was `|| true` on everything, with a note saying "make it enforcing
+      # once the tree is clean". The tree is now clean enough to ratchet: 18
+      # advisories down to 5, critical 1 -> 0 (D-240).
       #
-      # Make it enforcing once the tree is clean. That is the whole plan.
-      - name: Dependency audit (report only)
+      # Critical FAILS the build. There are none today, so this is green now and
+      # goes red the moment one appears — which is the only kind of threshold
+      # worth setting. A gate that is already failing when you add it teaches
+      # people to ignore it, and that is what the previous version was avoiding.
+      #
+      # High and moderate still report without failing, because the three highs
+      # that remain are unreachable and their reasoning is written down in
+      # docs/10-dependency-risk.md — postcss and sharp reached only through Next,
+      # neither on any path our code executes. Failing on those would mean
+      # a permanently red pipeline over findings we have already accounted for.
+      # The reachability claims are enforced as TESTS, not left as prose:
+      # apps/api/test/dependency-reachability.test.ts goes red if anyone adds
+      # next/image, a multipart handler, or a direct uuid call.
+      - name: Dependency audit (critical fails, rest reports)
+        run: npm audit --audit-level=critical
+
+      - name: Dependency audit (full report)
+        if: always()
         run: |
           npm audit --audit-level=moderate || true
           npm audit --json > audit.json || true
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: npm-audit
           path: audit.json
