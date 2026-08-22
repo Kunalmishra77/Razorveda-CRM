@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Post, Req, BadRequestException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Inject, Param, Post, Query, Req } from '@nestjs/common';
 import pgLib from 'pg';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
@@ -8,6 +8,7 @@ import type { AuthedRequest } from '../auth/session.guard.js';
 import type { OrderStatus as OrderStatusValue } from '@razorveda/shared';
 import { AttributionError, computeAttribution, type AttributionLine, type AttributionRule } from './attribution.js';
 import { StatusService } from './status.service.js';
+import { nextStatuses, repMayInitiate } from './status-machine.js';
 
 /**
  * Order Entry (docs/07 §4).
@@ -61,6 +62,69 @@ export class OrdersController {
     const parsed = statusSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message);
     return this.status.apply(request.session!, id, parsed.data.to as OrderStatusValue, { source: parsed.data.source });
+  }
+
+  /**
+   * The operational order list (docs/07 §5).
+   *
+   * Each row carries the transitions the CALLER may make — not every legal one.
+   * A rep is offered "confirm" and "cancel"; an admin is offered the courier
+   * states. Computing it here rather than in the UI means the screen cannot
+   * offer a button the API will refuse, and cannot hide one it would allow.
+   */
+  @Get()
+  async list(
+    @Query('status') status: string | undefined,
+    @Query('from') from: string | undefined,
+    @Query('to') to: string | undefined,
+    @Req() request: AuthedRequest,
+  ) {
+    const session = request.session!;
+    return withRlsContext(this.pool, session, async (client) => {
+      const { rows } = await client.query<OrderRow>(
+        `SELECT o.order_id, o.order_number, o.order_date, o.current_status::text,
+                c.full_name AS customer, c.primary_phone,
+                e.full_name AS rep, s.code AS source,
+                o.final_value::text, o.company_base_value::text,
+                o.payment_mode::text, o.prepaid_amount::text, o.cod_amount::text,
+                o.ship_state, o.awb_number, o.courier_partner,
+                o.delivered_date, o.rto_date,
+                (SELECT max(e2.event_at) FROM order_status_event e2 WHERE e2.order_id = o.order_id)
+                  AS last_moved,
+                coalesce((SELECT sum(al.employee_credited_value) FILTER (WHERE al.is_realised)
+                            FROM attribution_ledger al WHERE al.order_id = o.order_id), 0)::text
+                  AS realised_credit
+           FROM "order" o
+           JOIN customer c ON c.customer_id = o.customer_id
+           JOIN lead_source s ON s.source_id = o.source_id
+           LEFT JOIN employee e ON e.employee_id = o.booked_by_employee_id
+          WHERE ($1::text IS NULL OR o.current_status::text = $1)
+            AND ($2::date IS NULL OR o.order_date >= $2::date)
+            AND ($3::date IS NULL OR o.order_date <= $3::date)
+          ORDER BY o.order_date DESC, o.order_number
+          LIMIT 200`,
+        [status ?? null, from ?? null, to ?? null],
+      );
+
+      return {
+        ok: true,
+        orders: rows.map((r) => {
+          const current = r.current_status as OrderStatusValue;
+          const legal = nextStatuses(current);
+          return {
+            ...r,
+            // What THIS caller may do, which is the whole point. A rep who cannot
+            // dispatch never sees a dispatch button to be refused by.
+            available:
+              session.role === 'EMPLOYEE'
+                ? legal.filter((next) => repMayInitiate(current, next))
+                : legal,
+            // Named so the screen can warn before the click rather than after.
+            realisesCredit: legal.includes('DELIVERED' as OrderStatusValue),
+          };
+        }),
+      };
+    });
   }
 
   /** SKUs for the picker, with live pricing. */
@@ -297,4 +361,11 @@ interface OrderContext {
   state: string | null;
   pincode: string | null;
   skus: Map<string, SkuRow>;
+}
+
+interface OrderRow {
+  order_id: string;
+  order_number: string;
+  current_status: string;
+  [key: string]: unknown;
 }

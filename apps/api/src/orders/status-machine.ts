@@ -104,6 +104,37 @@ export function dateFieldFor(to: OrderStatus): 'dispatch_date' | 'delivered_date
 }
 
 /**
+ * May a REP initiate this transition herself?
+ *
+ * THIS IS NOT AN ISOLATION QUESTION, WHICH IS WHY IT WAS MISSED.
+ *
+ * RLS answers "whose order is it?" and answered correctly the whole time: a rep
+ * can only touch orders she booked. The question it cannot answer is whether she
+ * should be allowed to do this to her OWN order — and she could. She could book
+ * an order, walk it PENDING → CONFIRMED → PROCESSING → DISPATCHED → OFD →
+ * DELIVERED with six requests, and realise her own credit. No admin, no courier,
+ * no parcel. Credit is earned on delivery (rule 3), and delivery was self-service.
+ *
+ * The line drawn here: A REP MAY RECORD WHAT SHE KNOWS. SHE MAY NOT RECORD WHAT
+ * THE COURIER KNOWS.
+ *
+ *   CONFIRMED  she spoke to the customer and the order is real
+ *   CANCELLED  the customer changed their mind, and she is the one who was told
+ *
+ * Everything from PROCESSING onward is a warehouse or courier fact. It arrives
+ * through ingestion or from an admin, and never from the person being paid on it.
+ */
+export function repMayInitiate(from: OrderStatus, to: OrderStatus): boolean {
+  if (!canTransition(from, to)) return false;
+  // Cancelling is allowed from any state a rep could legitimately be told about,
+  // and cancelling can only ever REDUCE what she earns — so there is no incentive
+  // to abuse it, and blocking it would make her chase an admin to record a
+  // customer's change of mind.
+  if (to === 'CANCELLED') return true;
+  return from === 'PENDING' && to === 'CONFIRMED';
+}
+
+/**
  * RTO% is measured over orders DISPATCHED in the period (docs/03 §3), so an order
  * that never shipped belongs in neither the numerator nor the denominator.
  */

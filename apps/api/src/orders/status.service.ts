@@ -8,6 +8,7 @@ import {
   dateFieldFor,
   IllegalTransitionError,
   ledgerEffectOf,
+  repMayInitiate,
   type LedgerEffect,
 } from './status-machine.js';
 
@@ -78,6 +79,20 @@ export class StatusService {
       if (!order) throw new BadRequestException('That order was not found.');
 
       const from = order.current_status;
+
+      // AUTHORITY, checked before legality. RLS already proved the order is hers;
+      // this asks whether she may do this TO HER OWN ORDER. She could previously
+      // walk one to DELIVERED in six requests and realise her own credit — no
+      // admin, no courier, no parcel. Rule 3 says credit is earned on delivery,
+      // and delivery was self-service.
+      if (session.role === 'EMPLOYEE' && !repMayInitiate(from, to)) {
+        throw new BadRequestException(
+          `Only an admin can move an order to ${to.toLowerCase().replace(/_/g, ' ')}. ` +
+            `Dispatch and delivery are recorded from the courier's updates, not by the person ` +
+            `credited for the sale. You can confirm an order with the customer, or cancel it.`,
+        );
+      }
+
       try {
         assertTransition(from, to);
       } catch (e) {

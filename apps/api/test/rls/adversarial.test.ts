@@ -224,6 +224,99 @@ describe('IDOR — every endpoint that takes an id', () => {
   });
 });
 
+/**
+ * SELF-DEALING — the class the first review missed entirely.
+ *
+ * Every attack above asks "can rep A reach rep B's data?", and RLS answered
+ * correctly every time. None of them asked whether a rep may do something
+ * illegitimate to her OWN data, which RLS cannot answer and was never meant to.
+ *
+ * She could. Book an order, then PENDING → CONFIRMED → PROCESSING → DISPATCHED →
+ * OFD → DELIVERED in six requests, and the delivery realises her credit. No
+ * admin, no courier, no parcel. Credit is earned on delivery (rule 3) and
+ * delivery was self-service.
+ */
+describe('a rep cannot pay herself', () => {
+  let ownOrderId: string;
+  let ownLeadId: string;
+
+  beforeAll(async () => {
+    const { rows: [c] } = await pool.query<{ customer_id: string }>(
+      `INSERT INTO customer (primary_phone, full_name) VALUES ('9000000043','Self Deal Probe')
+       ON CONFLICT (primary_phone) DO UPDATE SET full_name = EXCLUDED.full_name
+       RETURNING customer_id`,
+    );
+    const { rows: [l] } = await pool.query<{ lead_id: string }>(
+      `INSERT INTO lead (customer_id, source_id, assigned_to, assigned_at, received_at, valid_till)
+       SELECT $1, source_id, $2, now(), now(), (CURRENT_DATE + 30)
+         FROM lead_source ORDER BY code LIMIT 1
+       RETURNING lead_id`,
+      [c!.customer_id, repA.employeeId],
+    );
+    ownLeadId = l!.lead_id;
+
+    const { rows: [o] } = await pool.query<{ order_id: string }>(
+      `INSERT INTO "order" (order_number, customer_id, lead_id, source_id, booked_by_employee_id,
+                            order_date, final_value, company_base_value, payment_mode,
+                            prepaid_amount, cod_amount, current_status)
+       SELECT 'SELF-' || left($3::text, 8), $1, $3::uuid, source_id, $2, CURRENT_DATE, 5000, 0,
+              'COD', 0, 5000, 'PENDING'
+         FROM lead_source ORDER BY code LIMIT 1
+       RETURNING order_id`,
+      [c!.customer_id, repA.employeeId, ownLeadId],
+    );
+    ownOrderId = o!.order_id;
+    await pool.query(
+      `INSERT INTO order_status_event (order_id, from_status, to_status, source)
+       VALUES ($1, NULL, 'PENDING', 'TEST')`,
+      [ownOrderId],
+    );
+    await pool.query(
+      `INSERT INTO attribution_ledger (order_id, employee_id, entry_type, company_base_value,
+                                       employee_credited_value, rule_applied, is_realised, period_key)
+       VALUES ($1,$2,'BOOKED_CREDIT',0,5000,'TEST',false,to_char(CURRENT_DATE,'YYYY-MM'))`,
+      [ownOrderId, repA.employeeId],
+    );
+  });
+
+  it('she CAN confirm her own order — she spoke to the customer', async () => {
+    // The line is not "reps cannot touch orders". She may record what she knows.
+    const res = await as(repA, `/orders/${ownOrderId}/status`, 'POST', { to: 'CONFIRMED' });
+    expect(res.status).toBeLessThan(400);
+  });
+
+  it('she CANNOT dispatch it — that is a warehouse fact', async () => {
+    const res = await as(repA, `/orders/${ownOrderId}/status`, 'POST', { to: 'PROCESSING' });
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    const body = (await res.json()) as { message?: string };
+    expect(body.message).toMatch(/only an admin/i);
+    // The message explains the rule rather than just refusing, so a rep who hits
+    // it understands it is policy and not a bug to be reported.
+    expect(body.message).toMatch(/courier/i);
+  });
+
+  it('she CANNOT mark it delivered, which is the one that pays her', async () => {
+    const res = await as(repA, `/orders/${ownOrderId}/status`, 'POST', { to: 'DELIVERED' });
+    expect(res.status).toBeGreaterThanOrEqual(400);
+  });
+
+  it('and nothing realised — the ledger is untouched', async () => {
+    const { rows: [led] } = await pool.query<{ realised: string }>(
+      `SELECT coalesce(sum(employee_credited_value) FILTER (WHERE is_realised), 0)::text AS realised
+         FROM attribution_ledger WHERE order_id = $1`,
+      [ownOrderId],
+    );
+    expect(Number(led!.realised)).toBe(0);
+  });
+
+  it('she CAN cancel it — cancelling can only ever reduce what she earns', async () => {
+    // Blocking this would make her chase an admin to record a customer's change
+    // of mind, and there is no incentive to abuse a transition that pays nothing.
+    const res = await as(repA, `/orders/${ownOrderId}/status`, 'POST', { to: 'CANCELLED' });
+    expect(res.status).toBeLessThan(400);
+  });
+});
+
 describe('pagination cannot be used to widen the blast radius', () => {
   it('a rep cannot exceed the 50-row cap by asking for more', async () => {
     const res = await as(repA, '/worklist?limit=5000');
