@@ -109,6 +109,18 @@ CREATE POLICY score_read ON employee_score_daily FOR SELECT TO app_role
 CREATE POLICY score_write ON employee_score_daily FOR ALL TO app_role
   USING (is_admin()) WITH CHECK (is_admin());
 
+-- ─── notification outbox — read your own, admins read all ─────────────────
+ALTER TABLE notification_outbox ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notification_outbox FORCE ROW LEVEL SECURITY;
+CREATE POLICY outbox_read ON notification_outbox FOR SELECT TO app_role
+  USING (is_admin() OR recipient_id = current_user_id());
+-- Writes are admin-only: the scheduler runs as an admin, and a rep who could
+-- INSERT here could compose a message that looks like it came from the system.
+-- Both halves present from the start -- a read policy without its write half is
+-- the single most repeated defect in this codebase (D-160).
+CREATE POLICY outbox_write ON notification_outbox FOR ALL TO app_role
+  USING (is_admin()) WITH CHECK (is_admin());
+
 -- ─── assignment log — read own ────────────────────────────────────────────
 ALTER TABLE lead_assignment ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lead_assignment FORCE ROW LEVEL SECURITY;

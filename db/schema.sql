@@ -480,6 +480,42 @@ CREATE TABLE incentive_modifier (
 );
 CREATE INDEX ix_modifier_active ON incentive_modifier(kind, effective_from);
 
+-- ---------------------------------------------------------------------------
+-- Scheduled digests and alerts (Phase 4 deliverables 3 and 4).
+--
+-- A table, unlike the 48h untouched alert (D-145) which is a QUERY over state
+-- that already exists. The difference is that a DELIVERY is not derivable from
+-- anything: "was the 07:30 plan sent to Nikita on Tuesday?" has no answer in the
+-- lead or order tables, and exit criterion 5 requires five consecutive days of
+-- sends to be VERIFIED.
+--
+-- It also provides idempotency. A scheduler that runs twice, or is retried after
+-- a crash, must not send a rep her morning plan twice — `ux_outbox_slot` makes
+-- the database refuse the duplicate rather than relying on the caller to check.
+CREATE TYPE notification_channel AS ENUM ('EMAIL','WHATSAPP','IN_APP','FILE');
+CREATE TYPE notification_status  AS ENUM ('PENDING','SENT','FAILED','SKIPPED');
+
+CREATE TABLE notification_outbox (
+  notification_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Which scheduled thing this is: 'rep_morning_plan', 'admin_exception_digest'...
+  kind            text NOT NULL,
+  -- The occurrence being delivered. A date for a daily digest, a date+hour for an
+  -- alert. Combined with kind and recipient it is what makes a resend impossible.
+  slot_key        text NOT NULL,
+  recipient_id    uuid REFERENCES app_user(user_id),
+  channel         notification_channel NOT NULL,
+  subject         text NOT NULL,
+  body            text NOT NULL,
+  status          notification_status NOT NULL DEFAULT 'PENDING',
+  -- Why a send failed, in words. A NULL here on a FAILED row is a bug.
+  failure_reason  text,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  sent_at         timestamptz
+);
+CREATE UNIQUE INDEX ux_outbox_slot
+  ON notification_outbox (kind, slot_key, coalesce(recipient_id, '00000000-0000-0000-0000-000000000000'::uuid));
+CREATE INDEX ix_outbox_pending ON notification_outbox (status, created_at) WHERE status = 'PENDING';
+
 CREATE TABLE employee_score_daily (
   employee_id            uuid NOT NULL REFERENCES employee(employee_id),
   score_date             date NOT NULL,

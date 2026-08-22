@@ -60,6 +60,19 @@ export const IncentiveModifierKind = {
   PRODUCT_SPIF: 'PRODUCT_SPIF', REPEAT_BONUS: 'REPEAT_BONUS',
 } as const;
 
+/**
+ * Where a scheduled digest went. FILE means it was written to disk and reached
+ * nobody — kept distinct from EMAIL and WHATSAPP precisely so a delivery record
+ * cannot claim a message was sent when no provider was configured.
+ */
+export const NotificationChannel = {
+  EMAIL: 'EMAIL', WHATSAPP: 'WHATSAPP', IN_APP: 'IN_APP', FILE: 'FILE',
+} as const;
+
+export const NotificationStatus = {
+  PENDING: 'PENDING', SENT: 'SENT', FAILED: 'FAILED', SKIPPED: 'SKIPPED',
+} as const;
+
 export const ActivityType = {
   CALL: 'CALL', WHATSAPP: 'WHATSAPP', SMS: 'SMS', NOTE: 'NOTE',
   STATUS_CHANGE: 'STATUS_CHANGE', ORDER: 'ORDER', SYSTEM: 'SYSTEM',
@@ -101,6 +114,8 @@ export const PG_ENUM_NAMES = {
   AttributionRule: 'attribution_rule',
   LedgerEntryType: 'ledger_entry_type',
   IncentiveModifierKind: 'incentive_modifier_kind',
+  NotificationChannel: 'notification_channel',
+  NotificationStatus: 'notification_status',
   ActivityType: 'activity_type',
   DispositionCategory: 'disposition_cat',
   BatchStatus: 'batch_status',
@@ -112,6 +127,7 @@ export const PG_ENUM_NAMES = {
 export const ALL_ENUMS = {
   UserRole, EmployeeStatus, CustomerType, BuyerStage, IdentifierType, PaymentMode,
   OrderStatus, AttributionRule, LedgerEntryType, IncentiveModifierKind, ActivityType,
+  NotificationChannel, NotificationStatus,
   DispositionCategory, BatchStatus, RowStatus, AssignMethod, LeadTemperature,
 } as const;
 
@@ -125,6 +141,8 @@ export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
 export type AttributionRule = (typeof AttributionRule)[keyof typeof AttributionRule];
 export type LedgerEntryType = (typeof LedgerEntryType)[keyof typeof LedgerEntryType];
 export type IncentiveModifierKind = (typeof IncentiveModifierKind)[keyof typeof IncentiveModifierKind];
+export type NotificationChannel = (typeof NotificationChannel)[keyof typeof NotificationChannel];
+export type NotificationStatus = (typeof NotificationStatus)[keyof typeof NotificationStatus];
 export type ActivityType = (typeof ActivityType)[keyof typeof ActivityType];
 export type DispositionCategory = (typeof DispositionCategory)[keyof typeof DispositionCategory];
 export type BatchStatus = (typeof BatchStatus)[keyof typeof BatchStatus];

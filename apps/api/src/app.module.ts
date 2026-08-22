@@ -26,6 +26,8 @@ import { ReportsService } from './reports/reports.service.js';
 import { ExportService } from './reports/export.service.js';
 import { ClosePackService } from './reports/close-pack.service.js';
 import { ReportsController } from './reports/reports.controller.js';
+import { DigestsService } from './notifications/digests.service.js';
+import { DigestsController } from './notifications/digests.controller.js';
 import { ActivityService } from './activity/activity.service.js';
 import { createAppPool } from './db/pool.js';
 import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
@@ -52,6 +54,7 @@ import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
     IncentiveController,
     EesController,
     ReportsController,
+    DigestsController,
   ],
   providers: [
     { provide: pg.Pool, useFactory: (): pg.Pool => createAppPool() },
@@ -82,6 +85,7 @@ import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
     { provide: EesService, useFactory: (pool: pg.Pool) => new EesService(pool), inject: [pg.Pool] },
     { provide: ReportsService, useFactory: (pool: pg.Pool) => new ReportsService(pool), inject: [pg.Pool] },
     { provide: ExportService, useFactory: (pool: pg.Pool) => new ExportService(pool), inject: [pg.Pool] },
+    { provide: DigestsService, useFactory: (pool: pg.Pool) => new DigestsService(pool), inject: [pg.Pool] },
     {
       provide: ClosePackService,
       useFactory: (pool: pg.Pool, incentive: IncentiveService, reports: ReportsService) =>
