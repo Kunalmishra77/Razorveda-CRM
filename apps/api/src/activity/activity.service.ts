@@ -155,17 +155,31 @@ export class ActivityService {
    */
   async logPiiAccess(
     session: RlsSession,
-    leadId: string,
+    leadId: string | null,
     action: 'VIEW' | 'COPY',
     ipAddress: string | null,
+    /**
+     * For a Customer 360 view, which reveals a phone number with no lead in
+     * front of it. Exactly one of `leadId` and `customerId` is expected.
+     */
+    customerId?: string,
   ): Promise<PiiAccessResult> {
     return withRlsContext(this.pool, session, async (client) => {
       const employeeId = await this.currentEmployeeId(client);
-      const { rowCount } = await client.query(
-        `INSERT INTO pii_access_log (employee_id, lead_id, customer_id, action, ip_address)
-         SELECT $1, l.lead_id, l.customer_id, $3, $4::inet FROM lead l WHERE l.lead_id = $2`,
-        [employeeId, leadId, action, ipAddress],
-      );
+      const { rowCount } = leadId
+        ? await client.query(
+            `INSERT INTO pii_access_log (employee_id, lead_id, customer_id, action, ip_address)
+             SELECT $1, l.lead_id, l.customer_id, $3, $4::inet FROM lead l WHERE l.lead_id = $2`,
+            [employeeId, leadId, action, ipAddress],
+          )
+        : await client.query(
+            // SELECT from customer rather than a bare VALUES, so RLS still decides.
+            // A caller who cannot see the customer logs nothing, which keeps the
+            // access log a record of what was SEEN rather than what was requested.
+            `INSERT INTO pii_access_log (employee_id, lead_id, customer_id, action, ip_address)
+             SELECT $1, NULL, c.customer_id, $3, $4::inet FROM customer c WHERE c.customer_id = $2`,
+            [employeeId, customerId ?? null, action, ipAddress],
+          );
 
       // No row means RLS did not show her that lead. Nothing was logged, so there
       // is nothing to evaluate — and saying so beats reporting a successful log.

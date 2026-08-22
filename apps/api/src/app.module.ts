@@ -33,6 +33,7 @@ import { OffboardingService } from './security/offboarding.service.js';
 import { SecurityController } from './security/security.controller.js';
 import { MasterDataService } from './master/master-data.service.js';
 import { MasterDataController } from './master/master-data.controller.js';
+import { CustomersController } from './customers/customers.controller.js';
 import { ActivityService } from './activity/activity.service.js';
 import { createAppPool } from './db/pool.js';
 import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
@@ -62,6 +63,7 @@ import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
     DigestsController,
     SecurityController,
     MasterDataController,
+    CustomersController,
   ],
   providers: [
     { provide: pg.Pool, useFactory: (): pg.Pool => createAppPool() },
