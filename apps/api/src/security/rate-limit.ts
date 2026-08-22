@@ -136,7 +136,29 @@ export class RateLimiter {
   }
 }
 
+/**
+ * Whether the limiter is active.
+ *
+ * The live test suite signs in as several people several times from one address
+ * and trips the login rule legitimately — the control is working, and it is
+ * working on the wrong target. So there is an explicit off switch for that one
+ * situation, and the API SAYS SO at boot every time it is used.
+ *
+ * Not `NODE_ENV !== 'production'`. A developer running the app locally should
+ * have rate limiting on, because that is when its rough edges get found. This has
+ * to be asked for by name.
+ */
+export const rateLimitDisabled = (): boolean => process.env['RATE_LIMIT_DISABLED'] === '1';
+
 export function rateLimit(limiter: RateLimiter = new RateLimiter()) {
+  if (rateLimitDisabled()) {
+    console.warn(
+      'api      RATE LIMITING IS OFF (RATE_LIMIT_DISABLED=1). Login brute-force protection ' +
+        'is disabled. This must never be set in production.',
+    );
+    return (_req: Request, _res: Response, next: NextFunction): void => next();
+  }
+
   // unref so a long-lived timer never holds the process open during shutdown or
   // in a test run.
   const timer = setInterval(() => limiter.sweep(Date.now()), 10 * 60_000);

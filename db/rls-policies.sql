@@ -305,7 +305,15 @@ BEGIN
 
   -- Revoking the sessions is the half that actually stops her. Without it the
   -- lock only takes effect at her next sign-in, which may be tomorrow.
-  DELETE FROM app_session WHERE user_id = v_user_id;
+  --
+  -- REVOKED, NOT DELETED. The first version deleted the rows, which worked only
+  -- because SECURITY DEFINER runs as the owner: app_role has INSERT, SELECT and
+  -- UPDATE on app_session and deliberately no DELETE. It also destroyed the
+  -- session history — where she was signed in from, and for how long — which is
+  -- exactly what an admin needs when deciding whether the lock was fair.
+  UPDATE app_session
+     SET revoked_at = now(), revoked_reason = 'Copy-velocity lock'
+   WHERE user_id = v_user_id AND revoked_at IS NULL;
   GET DIAGNOSTICS v_sessions = ROW_COUNT;
 
   -- One slot per lock event, so a later lock of the same account alerts again.

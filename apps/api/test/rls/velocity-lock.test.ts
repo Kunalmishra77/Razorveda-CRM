@@ -155,11 +155,31 @@ describe('what the lock actually does to her', () => {
   it('revokes her live sessions, not just her next sign-in', async () => {
     // Without this the lock takes effect whenever she next signs in, which may be
     // tomorrow — long after the numbers are gone.
-    const { rows: [s] } = await pool.query<{ n: string }>(
-      `SELECT count(*)::text AS n FROM app_session WHERE user_id = $1`,
+    const { rows: [live] } = await pool.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM app_session
+        WHERE user_id = $1 AND revoked_at IS NULL`,
       [rep.userId],
     );
-    expect(Number(s!.n)).toBe(0);
+    expect(Number(live!.n)).toBe(0);
+  });
+
+  it('PRESERVES the revoked sessions, with the reason', async () => {
+    // The first version deleted them, which worked only because SECURITY DEFINER
+    // runs as the owner — app_role has no DELETE on app_session. It also destroyed
+    // where she was signed in from and for how long, which is exactly what an
+    // admin needs when deciding whether the lock was fair.
+    // Counted by reason, not max(). Single-session enforcement revokes her
+    // earlier sessions too with SUPERSEDED_BY_NEW_LOGIN, and picking the
+    // alphabetical maximum of several reasons is meaningless — it happened to
+    // return the wrong one and the test failed for a reason unrelated to the lock.
+    const { rows: [revoked] } = await pool.query<{ total: string; by_lock: string }>(
+      `SELECT count(*)::text AS total,
+              count(*) FILTER (WHERE revoked_reason = 'Copy-velocity lock')::text AS by_lock
+         FROM app_session WHERE user_id = $1 AND revoked_at IS NOT NULL`,
+      [rep.userId],
+    );
+    expect(Number(revoked!.total)).toBeGreaterThan(0);
+    expect(Number(revoked!.by_lock)).toBeGreaterThan(0);
   });
 
   it('kills the cookie she is holding right now', async () => {

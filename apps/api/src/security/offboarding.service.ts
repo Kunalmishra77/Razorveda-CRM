@@ -67,9 +67,15 @@ export class OffboardingService {
       // ── 1. cut off access ──────────────────────────────────────────────────
       let sessionsRevoked = 0;
       if (employee.user_id) {
-        const revoked = await client.query(`DELETE FROM app_session WHERE user_id = $1`, [
-          employee.user_id,
-        ]);
+        // Revoked, not deleted. app_role has no DELETE on app_session — a
+        // deliberate posture, and the right one: the session history is part of
+        // the access history this flow is required to preserve.
+        const revoked = await client.query(
+          `UPDATE app_session
+              SET revoked_at = now(), revoked_reason = 'Offboarded'
+            WHERE user_id = $1 AND revoked_at IS NULL`,
+          [employee.user_id],
+        );
         sessionsRevoked = revoked.rowCount ?? 0;
 
         // Locked as well as session-revoked. Revoking alone leaves her able to
@@ -193,7 +199,7 @@ export class OffboardingService {
                     AND current_status NOT IN ('DELIVERED','RTO','RETURNED','CANCELLED'))
                   AS open_orders,
                 (SELECT count(*)::int FROM app_session s
-                  WHERE s.user_id = e.user_id AND s.expires_at > now()) AS active_sessions
+                  WHERE s.user_id = e.user_id AND s.revoked_at IS NULL) AS active_sessions
            FROM employee e WHERE e.employee_id = $1`,
         [employeeId],
       );

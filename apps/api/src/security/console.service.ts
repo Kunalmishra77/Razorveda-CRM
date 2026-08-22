@@ -165,12 +165,16 @@ export class SecurityConsoleService {
       const { rows } = await client.query(
         `SELECT u.email, u.role, e.full_name,
                 count(*)::int          AS sessions,
-                max(s.created_at)      AS newest,
-                min(s.created_at)      AS oldest
+                max(s.last_seen_at)    AS last_seen,
+                min(s.issued_at)       AS oldest,
+                count(DISTINCT s.ip_address)::int AS addresses
            FROM app_session s
            JOIN app_user u ON u.user_id = s.user_id
            LEFT JOIN employee e ON e.user_id = u.user_id
-          WHERE s.expires_at > now()
+          -- A live session is one that has not been revoked. There is no
+          -- expires_at column; the first version invented one and the endpoint
+          -- returned nothing at all while reporting success.
+          WHERE s.revoked_at IS NULL
           GROUP BY u.email, u.role, e.full_name
           ORDER BY count(*) DESC, u.email`,
       );

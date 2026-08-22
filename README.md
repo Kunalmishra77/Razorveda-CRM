@@ -198,6 +198,23 @@ days especially. Every per-day figure is marked provisional until the working ca
 
 ---
 
+## Running the live test suite
+
+`npm run test:rls` drives the real API as real users, so the API must be running
+AND rate limiting must be off — the suite signs in as several people several
+times from one address and trips the login rule legitimately. The control is
+working; it is working on the wrong target.
+
+```bash
+RATE_LIMIT_DISABLED=1 npm run dev:api        # in one terminal
+npm run test:rls                              # in another
+```
+
+`RATE_LIMIT_DISABLED` is deliberately not tied to `NODE_ENV`. A developer running
+the app locally should have rate limiting ON — that is when its rough edges get
+found. It has to be asked for by name, and the API prints a warning on every boot
+where it is set.
+
 ## Backup and restore
 
 **An untested backup is not a backup.** Run the drill monthly:
