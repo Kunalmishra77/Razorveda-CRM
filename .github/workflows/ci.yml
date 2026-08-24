@@ -31,7 +31,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      # 594 tests across the four workspaces. None of these need a database.
+      # 597 tests across the four workspaces. None of these need a database.
       - name: Unit tests
         run: npm test
 
@@ -77,18 +77,112 @@ jobs:
           name: npm-audit
           path: audit.json
 
-# NOT HERE, AND ON PURPOSE: the live database suite (test:rls) and the restore
-# drill. They are the tests that have actually caught things in this project —
-# the eight isolation tests, the adversarial security review, the RLS coverage
-# guard, the velocity lock, the fan-out guard — and they belong in CI.
-#
-# They are absent because the first version of this file added them without being
-# able to run GitHub Actions locally, and it failed on every push and emailed the
-# repository owner each time. Adding them back needs, and needs verifying:
-#
-#   services: postgres:16 mapped to 5433
-#   apt-get install postgresql-client-16   (pg_dump for the restore drill)
-#   DATABASE_URL / DATABASE_URL_APP / JWT_SECRET in env
-#   the API started in the background before test:rls
-#
-# A green pipeline that runs less is worth more than a red one that claims more.
+  # THE TESTS THAT HAVE ACTUALLY CAUGHT THINGS.
+  #
+  # This job was absent for a while, and the note in its place said so honestly:
+  # the first version of this file added it without being able to run GitHub
+  # Actions locally, it failed on every push, and it emailed the repository owner
+  # each time. "A green pipeline that runs less is worth more than a red one that
+  # claims more" was the right call at the time.
+  #
+  # What changed is that the whole sequence was rehearsed end to end against an
+  # empty database first, and rehearsing it found two defects that 681 tests and
+  # every previous CI run had missed - db/schema.sql could not be applied to a
+  # fresh database at all (D-248). That is precisely the class of bug a job like
+  # this exists to catch, and it was sitting in the repo the entire time the job
+  # was missing.
+  #
+  # It BUILDS FROM EMPTY on every push. That is the point. A migration that only
+  # works on a database which already has the table is not a migration.
+  rls:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          # Naming the superuser here means no bootstrap psql step: the container
+          # creates exactly the role the migrator expects.
+          POSTGRES_USER: razorveda_migrator
+          POSTGRES_PASSWORD: localdev
+          POSTGRES_DB: razorveda
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U razorveda_migrator"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # localhost is in the LOCAL_HOSTS allowlist in packages/db/src/env.ts, so
+      # assertLocalTarget permits this. D-17 holds: CI runs against its own
+      # throwaway Postgres and never against Coolify. There is no credential here
+      # that could reach it even by accident.
+      DATABASE_URL: postgresql://razorveda_migrator:localdev@localhost:5433/razorveda
+      DATABASE_URL_APP: postgresql://razorveda_app:localdev@localhost:5433/razorveda
+      JWT_SECRET: ci-only-secret-value-at-least-32-characters-long
+      RATE_LIMIT_DISABLED: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+
+      # pg_dump for the restore drill. The runner image ships a client, but not
+      # necessarily 16 - and a client older than the server refuses the dump.
+      - name: Install postgresql-client-16
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+          pg_dump --version
+
+      # From nothing to correct, in the same order a new environment would.
+      - name: Migrate (from an EMPTY database)
+        run: npm run db:migrate
+
+      - name: Seed master data
+        run: npm run db:seed
+
+      # NOT OPTIONAL, and not obvious. seed:dev is what creates two reps holding
+      # different leads and a customer belonging to neither. Without it every
+      # isolation assertion passes VACUOUSLY - a rep who can see nothing looks
+      # exactly like a rep who is correctly scoped, and the suite goes green while
+      # proving nothing at all.
+      - name: Seed cross-rep fixture
+        run: npm run db:seed:dev
+
+      # API and suite in ONE step, deliberately. Split across steps, the wait loop
+      # can pass against a process that is about to exit, and the failure then
+      # surfaces as an unrelated connection error in the next step.
+      - name: RLS isolation suite (87 tests)
+        run: |
+          # Started from apps/api, which is exactly how the sequence was
+          # rehearsed locally. main.ts reads nothing relative to cwd today, but
+          # matching the rehearsal costs nothing and removes a variable.
+          (cd apps/api && node ../../node_modules/tsx/dist/cli.mjs src/main.ts > /tmp/api.log 2>&1 &)
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3001/health >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://localhost:3001/health || { echo "API never came up:"; cat /tmp/api.log; exit 1; }
+          npm run test:rls
+
+      # Restores into a scratch database and checks that RLS, the append-only
+      # triggers, the SECURITY DEFINER functions and actual rep isolation all
+      # survive the round trip. A backup that restores without its policies is a
+      # data breach with a recovery-time objective attached.
+      - name: Restore drill
+        env:
+          PG_BIN: /usr/lib/postgresql/16/bin
+          PGHOST: localhost
+          PGPORT: '5433'
+          PGUSER: razorveda_migrator
+          PGPASSWORD: localdev
+          PGDATABASE: razorveda
+        run: npm run db:restore-drill
+
+      - name: API log
+        if: failure()
+        run: cat /tmp/api.log || true

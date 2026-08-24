@@ -318,13 +318,6 @@ CREATE TABLE lead (
   created_at             timestamptz NOT NULL DEFAULT now(),
   updated_at             timestamptz NOT NULL DEFAULT now()
 );
--- By STATUS, for the reports that ask "when did things reach state X".
--- order_status_event is the largest table in the database — five rows per order,
--- ~1M at 90 days — and every certified view reads it rather than
--- order.current_status (D-161). Without this the dispatch-TAT query scanned the
--- whole table twice.
-CREATE INDEX ix_event_status ON order_status_event(to_status, event_at);
-
 -- The worklist's two hot lookups, both of which were full scans at volume.
 -- THE RLS POLICY'S OWN INDEX, and the one most easily forgotten.
 --
@@ -335,7 +328,6 @@ CREATE INDEX ix_event_status ON order_status_event(to_status, event_at);
 -- like any other.
 CREATE INDEX ix_lead_customer_assigned ON lead(customer_id, assigned_to);
 
-CREATE INDEX ix_activity_employee_day ON activity(employee_id, occurred_at);
 CREATE INDEX ix_lead_open_assigned    ON lead(assigned_to, next_followup_at)
   WHERE NOT is_converted AND closed_at IS NULL;
 
@@ -368,6 +360,11 @@ CREATE TABLE activity (                        -- APPEND ONLY
   intent_tags        text[] DEFAULT '{}',
   occurred_at        timestamptz NOT NULL DEFAULT now()
 );
+
+-- Per-rep, per-day activity is the denominator of every productivity metric in
+-- docs/03. Moved here from 20 lines above the table it indexes — legal in a
+-- database that already had `activity`, rejected outright by an empty one.
+CREATE INDEX ix_activity_employee_day ON activity(employee_id, occurred_at);
 CREATE INDEX ix_activity_emp_time ON activity USING brin (occurred_at);
 CREATE INDEX ix_activity_lead ON activity(lead_id, occurred_at DESC);
 
@@ -432,6 +429,17 @@ CREATE TABLE order_status_event (              -- APPEND ONLY
   changed_by         uuid REFERENCES app_user(user_id)
 );
 CREATE INDEX ix_status_event_order ON order_status_event(order_id, event_at);
+
+-- By STATUS, for the reports that ask "when did things reach state X".
+-- order_status_event is the largest table in the database — five rows per order,
+-- ~1M at 90 days — and every certified view reads it rather than
+-- order.current_status (D-161). Without this the dispatch-TAT query scanned the
+-- whole table twice.
+--
+-- It sat 100 lines ABOVE this table for a while, which is a statement Postgres
+-- rejects on an empty database. Nothing noticed because every database it was
+-- applied to already had the table. See the schema-bootstrap CI job.
+CREATE INDEX ix_event_status ON order_status_event(to_status, event_at);
 
 CREATE TABLE order_credit_split (               -- handles "Riya / Divya" and "Riya / Shopify"
   split_id     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
