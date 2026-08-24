@@ -28,7 +28,13 @@ import pg from 'pg';
  * quietly passing on a technicality.
  */
 
-const PG_BIN = process.env['PG_BIN'] ?? 'C:/Program Files/PostgreSQL/18/bin';
+/**
+ * Windows default, because that is where this drill was written and is run by
+ * hand. CI overrides it (/usr/lib/postgresql/16/bin) and the client's server is
+ * Linux, so both paths matter.
+ */
+const PG_BIN =
+  process.env['PG_BIN'] ?? (process.platform === 'win32' ? 'C:/Program Files/PostgreSQL/18/bin' : '/usr/bin');
 const BACKUP_DIR = resolve(fileURLToPath(new URL('../../../.backups', import.meta.url)));
 
 const HOST = process.env['PGHOST'] ?? '127.0.0.1';
@@ -38,7 +44,19 @@ const PASSWORD = process.env['PGPASSWORD'] ?? 'localdev';
 const SOURCE_DB = process.env['PGDATABASE'] ?? 'razorveda';
 const SCRATCH_DB = 'razorveda_restore_drill';
 
-const tool = (name: string): string => join(PG_BIN, `${name}.exe`);
+/**
+ * `.exe` ONLY ON WINDOWS.
+ *
+ * This was unconditional, which meant the drill looked for `pg_dump.exe` on
+ * Linux and reported "pg_dump was not found — set PG_BIN". Invisible for as long
+ * as the drill only ever ran on the laptop it was written on; it failed the first
+ * time CI ran it, which is the entire argument for putting it in CI.
+ *
+ * The client's production database is Linux. A disaster-recovery drill that
+ * cannot execute on the platform it is meant to recover is not a drill.
+ */
+const EXE = process.platform === 'win32' ? '.exe' : '';
+const tool = (name: string): string => join(PG_BIN, `${name}${EXE}`);
 
 function run(name: string, args: readonly string[]): { ok: boolean; output: string } {
   const result = spawnSync(tool(name), args, {
