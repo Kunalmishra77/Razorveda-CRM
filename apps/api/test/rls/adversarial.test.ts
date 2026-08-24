@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
+import { openShifts, restoreShifts } from './shift-window.js';
 
 /**
  * THE SELF-DIRECTED SECURITY REVIEW (tasks/phase-5, exit criterion 1).
@@ -66,6 +67,9 @@ beforeAll(async () => {
   }
 
   pool = new pg.Pool({ connectionString: DATABASE_URL });
+  // Sign-in is refused outside a rep shift, so the suite would be green in the
+  // afternoon and red at night. See shift-window.ts.
+  await openShifts(pool);
 
   const { rows: reps } = await pool.query<{ email: string; full_name: string; employee_id: string }>(
     `SELECT u.email, e.full_name, e.employee_id
@@ -115,6 +119,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await restoreShifts(pool);
   await pool?.query(`UPDATE lead SET closed_at = now(), assigned_to = NULL WHERE lead_id = $1`, [bLeadId])
     .catch(() => undefined);
   await pool?.query(`UPDATE "order" SET current_status = 'CANCELLED' WHERE order_id = $1`, [bOrderId])

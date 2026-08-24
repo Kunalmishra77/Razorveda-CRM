@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   evaluateLogin,
+  isShiftBound,
   isWithinShift,
   requiresTotp,
   type LoginAttempt,
@@ -118,6 +119,38 @@ describe('evaluateLogin — shift window', () => {
     expect(evaluateLogin({ ...admin, role: 'OWNER' }, { ...good, localTime: '03:00' })).toMatchObject(
       { ok: true },
     );
+  });
+});
+
+describe('the shift window is a switch, and it is ON unless someone sets it off', () => {
+  // The env var was added so an evening demo does not have to happen between
+  // 10:00 and 20:00 IST (D-316). The risk of any such switch is that it is
+  // written once, defaults the wrong way, and nobody notices — so the default is
+  // asserted here rather than assumed.
+  const previous = process.env['SHIFT_HOURS_DISABLED'];
+  afterEach(() => {
+    if (previous === undefined) delete process.env['SHIFT_HOURS_DISABLED'];
+    else process.env['SHIFT_HOURS_DISABLED'] = previous;
+  });
+
+  it('binds a rep to her shift when the variable is unset', () => {
+    delete process.env['SHIFT_HOURS_DISABLED'];
+    expect(isShiftBound('EMPLOYEE')).toBe(true);
+  });
+
+  it('lifts it only for the exact value 1 — not for "true", "yes" or "0"', () => {
+    for (const v of ['true', 'yes', '0', '']) {
+      process.env['SHIFT_HOURS_DISABLED'] = v;
+      expect(isShiftBound('EMPLOYEE'), `"${v}" must not disable the shift window`).toBe(true);
+    }
+    process.env['SHIFT_HOURS_DISABLED'] = '1';
+    expect(isShiftBound('EMPLOYEE')).toBe(false);
+  });
+
+  it('never binds an admin or the owner either way', () => {
+    delete process.env['SHIFT_HOURS_DISABLED'];
+    expect(isShiftBound('ADMIN')).toBe(false);
+    expect(isShiftBound('OWNER')).toBe(false);
   });
 });
 

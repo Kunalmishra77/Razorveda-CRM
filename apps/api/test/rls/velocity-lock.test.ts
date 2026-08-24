@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
+import { openShifts, restoreShifts } from './shift-window.js';
 import { PII_COPY_VELOCITY_COUNT } from '@razorveda/shared';
 
 /**
@@ -55,6 +56,9 @@ beforeAll(async () => {
   if (!health?.ok) throw new Error(`The API is not answering at ${API}.`);
 
   pool = new pg.Pool({ connectionString: DATABASE_URL });
+  // Sign-in is refused outside a rep shift, so the suite would be green in the
+  // afternoon and red at night. See shift-window.ts.
+  await openShifts(pool);
 
   // A rep with a CLEAN ninety-second window. `pii_access_log` is append-only, so
   // copies left by an earlier run — or by the previous run of this very file —
@@ -106,6 +110,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await restoreShifts(pool);
   // Leave the account usable for the next run and for a human poking at the app.
   await pool?.query(`UPDATE app_user SET is_locked = false, locked_reason = NULL WHERE user_id = $1`, [
     rep.userId,

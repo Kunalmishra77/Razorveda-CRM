@@ -27,17 +27,31 @@ const aliases = read('disposition_aliases.csv');
 const slabs = read('incentive_slabs.csv');
 
 describe('seed files — phase 0 exit criterion 7', () => {
-  it('has the expected row counts', () => {
+  it('has the expected row counts for the fixed masters', () => {
     expect({
       productLines: lines.length,
       skus: skus.length,
       users: employees.length,
       sources: sources.length,
-      dispositions: dispositions.length,
-      aliases: aliases.length,
-    }).toEqual({
-      productLines: 7, skus: 20, users: 13, sources: 9, dispositions: 19, aliases: 64,
-    });
+    }).toEqual({ productLines: 7, skus: 20, users: 13, sources: 9 });
+  });
+
+  /**
+   * DISPOSITIONS AND ALIASES ARE FLOORS, NOT EQUALITIES — and that is the point.
+   *
+   * The exit criterion pinned 19 dispositions and 64 aliases. Then the client's
+   * real workbooks arrived carrying outcomes the vocabulary had no home for —
+   * "call cut", "low profile", "money problem", "waiting for pic" — and every one
+   * of them would have been silently parked. The set is now 25 and 80.
+   *
+   * An exact count here would fail on every legitimate discovery, which trains
+   * whoever hits it to edit the number without reading it. So the floor guards
+   * against truncation and deletion, and the referential tests below do the work
+   * that actually matters: every alias resolves, no alias is duplicated.
+   */
+  it('never shrinks the outcome vocabulary below what the client data needs', () => {
+    expect(dispositions.length).toBeGreaterThanOrEqual(25);
+    expect(aliases.length).toBeGreaterThanOrEqual(80);
   });
 
   it('splits the 13 users into 1 OWNER, 3 ADMIN and 9 EMPLOYEE', () => {

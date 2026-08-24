@@ -18,3 +18,9 @@ LANGUAGE_ISSUE,Language issue,CLOSED,false,false,true,16
 FAKE_LEAD,Fake lead,CLOSED,true,false,false,17
 DNC,Do not call,CLOSED,true,false,true,18
 OTHER,Other / unclassified,NOT_CONNECTED,false,false,false,99
+CALL_CUT,Call disconnected,NOT_CONNECTED,false,false,false,20
+LOW_PROFILE,Low profile,NEGATIVE,true,false,true,21
+MONEY_PROBLEM,Money problem,NEGATIVE,false,true,true,22
+WAITING_PIC,Waiting for pic / reply,POSITIVE,false,true,true,23
+NOT_SIGNUP,Not signed up,NEGATIVE,false,true,true,24
+NOT_ATTEMPTED,Not attempted yet,NOT_CONNECTED,false,false,false,25

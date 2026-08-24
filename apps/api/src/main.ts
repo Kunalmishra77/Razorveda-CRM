@@ -74,6 +74,9 @@ async function bootstrap(): Promise<void> {
       ? 'api      !! TWO-FACTOR IS OFF for admins (TOTP_DISABLED=1). Development only.'
       : 'api      two-factor required for admins and the owner',
   );
+  if (process.env['SHIFT_HOURS_DISABLED'] === '1') {
+    console.log('api      !! SHIFT HOURS ARE OFF for reps (SHIFT_HOURS_DISABLED=1). Development only.');
+  }
   if (!production) console.log('api      HSTS off and cookies not secure — NODE_ENV is not production');
 }
 

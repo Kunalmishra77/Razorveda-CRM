@@ -198,6 +198,32 @@ export class EesService {
         ],
       );
     }
+
+    // THE RUN OWNS THE DATE, not just the rows it happened to write.
+    //
+    // The UPSERT above only touches reps who appear in THIS run. A rep who had
+    // leads last time and none now keeps her old row untouched, and it does not
+    // read as absence — it reads as fact. Found with the client's real data
+    // loaded: `employee_score_daily` for today showed a rep with 3,486 leads
+    // assigned and an 18.6% RTO rate, and she holds nothing at all. The numbers
+    // were true of a dataset that no longer exists, which is the worst kind of
+    // wrong: internally consistent and completely stale.
+    //
+    // Zeroed rather than deleted. `app_role` has no DELETE anywhere and that is
+    // deliberate, and "this rep had no leads assigned in this period" is a true
+    // statement that a report can render. Rows are only corrected, never
+    // invented: an employee the scorer has never written stays absent.
+    const scoredIds = scores.map((s) => s.employeeId);
+    await client.query(
+      `UPDATE employee_score_daily
+          SET leads_assigned = 0, conversion_pct = 0, upsell_index = 1,
+              rto_pct = 0, followup_sla_pct = 0, data_hygiene_pct = 0,
+              efficiency_score = 0, shrinkage_applied = false
+        WHERE score_date = $1
+          AND NOT (employee_id = ANY($2::uuid[]))
+          AND (leads_assigned <> 0 OR rto_pct <> 0 OR efficiency_score <> 0)`,
+      [scoreDate, scoredIds],
+    );
   }
 }
 

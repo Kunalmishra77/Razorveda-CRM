@@ -12,7 +12,7 @@ BUSY,bsy
 BUSY,busy call cut
 BUSY,bsy call cut
 BUSY,bsy cal cut
-BUSY,call cut
+CALL_CUT,call cut
 BUSY,cut call
 NOT_CONNECTED,not connect
 NOT_CONNECTED,not connected
@@ -63,3 +63,19 @@ FAKE_LEAD,fake lead
 FAKE_LEAD,fake
 DNC,dnc
 DNC,do not call
+CALL_CUT,call disconnect
+CALL_CUT,call disconnected
+LOW_PROFILE,low profile
+MONEY_PROBLEM,money problem
+WAITING_PIC,waiting for pic
+WAITING_PIC,waiting for picture
+NOT_SIGNUP,not sign-up
+NOT_SIGNUP,not signup
+NOT_ATTEMPTED,not attampt
+NOT_ATTEMPTED,not attempt
+WRONG_NUMBER,invalid number
+LANGUAGE_ISSUE,language issues
+NOT_INTERESTED,not intrested
+FAKE_LEAD,fake order
+ORDER_DONE,rto
+UNDER_AGE,under age (below-20)

@@ -64,8 +64,24 @@ export const requiresTotp = (role: UserRole): boolean => {
   return role === 'ADMIN' || role === 'OWNER';
 };
 
-/** ADMIN and OWNER are not shift-bound; reps are. */
-export const isShiftBound = (role: UserRole): boolean => role === 'EMPLOYEE';
+/**
+ * ADMIN and OWNER are not shift-bound; reps are.
+ *
+ * `SHIFT_HOURS_DISABLED=1` lifts it, and the same reasoning applies as for TOTP
+ * (D-305): the control is real and stays ON by default, but demanding that a
+ * demo, a bug reproduction or an evening's development happen between 10:00 and
+ * 20:00 IST is a tax with no security value on a laptop. It is a documented
+ * switch rather than a rule quietly softened, and the API announces which state
+ * it is in on every boot — a control that can be turned off silently is one
+ * nobody notices is off.
+ *
+ * In production this stays unset. The shift window is what stops a rep pulling
+ * customer phone numbers at 3am.
+ */
+export const isShiftBound = (role: UserRole): boolean => {
+  if (process.env['SHIFT_HOURS_DISABLED'] === '1') return false;
+  return role === 'EMPLOYEE';
+};
 
 /**
  * "HH:MM" comparison, inclusive of both ends.

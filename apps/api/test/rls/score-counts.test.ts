@@ -243,4 +243,51 @@ describe('the scored counts match the orders that actually exist', () => {
       expect(Number(r.rto_pct), `${r.full_name} has no returns but reads ${r.rto_pct}`).toBe(0);
     }
   });
+
+  it('does not leave a rep who has dropped out of the run reading last time she was in it', async () => {
+    // The UPSERT only touches reps the current run scored. Before the fix, a rep
+    // who had leads in an earlier run and none now kept that row verbatim, and it
+    // did not read as absence — it read as fact. With the client's real data
+    // loaded, today's table showed a rep with 3,486 leads assigned and an 18.6%
+    // RTO rate while she held nothing at all.
+    //
+    // Take a rep who genuinely has no leads this period, plant a plausible row on
+    // her for today, re-run, and require the run to have corrected it.
+    const { rows: [idle] } = await pool.query<{ employee_id: string; full_name: string }>(
+      `SELECT e.employee_id, e.full_name
+         FROM employee e
+        WHERE e.employee_id <> $1
+          AND NOT EXISTS (
+            SELECT 1 FROM lead l
+             WHERE l.assigned_to = e.employee_id
+               AND l.assigned_at::date >= date_trunc('month', $2::date)::date)
+        ORDER BY e.emp_code LIMIT 1`,
+      [repId, today],
+    );
+    if (!idle) return; // every employee worked this month — nothing to assert.
+
+    await pool.query(
+      `INSERT INTO employee_score_daily
+         (employee_id, score_date, leads_assigned, conversion_pct, upsell_index,
+          rto_pct, followup_sla_pct, data_hygiene_pct, efficiency_score, shrinkage_applied)
+       VALUES ($1,$2,3486,0.31,1.2,0.1863,0.77,0.64,58.2,true)
+       ON CONFLICT (employee_id, score_date) DO UPDATE SET
+         leads_assigned = 3486, rto_pct = 0.1863, efficiency_score = 58.2`,
+      [idle.employee_id, today],
+    );
+
+    await service.run(admin, today);
+
+    const { rows: [after] } = await pool.query<{ leads_assigned: number; rto_pct: string }>(
+      `SELECT leads_assigned, rto_pct::text FROM employee_score_daily
+        WHERE employee_id = $1 AND score_date = $2`,
+      [idle.employee_id, today],
+    );
+    expect(after, 'the planted row vanished entirely — it should be corrected, not deleted').toBeDefined();
+    expect(
+      after!.leads_assigned,
+      `${idle.full_name} holds no leads this month but her score row still claims ${after!.leads_assigned}`,
+    ).toBe(0);
+    expect(Number(after!.rto_pct)).toBe(0);
+  });
 });
