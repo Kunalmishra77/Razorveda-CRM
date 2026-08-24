@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { withRlsContext } from '../db/rls-context.js';
 import { AdminGuard, type AuthedRequest } from '../auth/session.guard.js';
 import { AssignmentService } from './assignment.service.js';
+import { TransferService } from './transfer.service.js';
 import { preAssignWarnings, suggestSplit, type PoolLead, type RepSnapshot } from './pre-assign-warnings.js';
 
 /**
@@ -30,12 +31,33 @@ const assignSchema = z.object({
   overrideReason: z.string().max(500).optional(),
 });
 
+/**
+ * A transfer takes work OFF somebody, so the reason is required here and not
+ * merely encouraged. Twelve characters is not a quality bar — it is enough to
+ * stop "x" and "asdf" while staying out of the way of "Priya on leave", which is
+ * a perfectly good answer.
+ */
+const transferSchema = z
+  .object({
+    leadIds: z.array(z.string().uuid()).min(1, 'Select at least one lead to move.'),
+    fromEmployeeId: z.string().uuid(),
+    /** Absent or null means "back to the unassigned pool". */
+    toEmployeeId: z.string().uuid().nullish(),
+    reason: z
+      .string()
+      .trim()
+      .min(12, 'Say why in a few words — the rep losing these leads will ask.')
+      .max(500),
+  })
+  .strict();
+
 @Controller('assignment')
 @UseGuards(AdminGuard)
 export class AssignmentController {
   constructor(
     @Inject(pgLib.Pool) private readonly pool: Pool,
     @Inject(AssignmentService) private readonly assignments: AssignmentService,
+    @Inject(TransferService) private readonly transfers: TransferService,
   ) {}
 
   /** The unassigned pool. Capped page size; the count covers the whole filter. */
@@ -154,6 +176,109 @@ export class AssignmentController {
     });
 
     return { ok: true, ...result };
+  }
+
+  /**
+   * WHAT ONE REP IS HOLDING — the screen an admin needs before moving anything.
+   *
+   * The pool answers "what has nobody got". This answers "what has SHE got", and
+   * without it a transfer is a blind action: an admin would be choosing leads to
+   * move off a person whose workload she cannot see.
+   *
+   * Capped, with the count from its own COUNT. Same defect four times now
+   * (D-231, D-291, D-302) and the shape of the fix does not change.
+   */
+  @Get('assigned')
+  async assigned(
+    @Req() request: AuthedRequest,
+    @Query('employeeId') employeeId?: string,
+    @Query('band') band?: string,
+    @Query('q') q?: string,
+    @Query('limit') limit?: string,
+  ) {
+    if (!employeeId) return { ok: false, message: 'Choose a rep to see what she is holding.' };
+    const pageSize = Math.min(Number(limit ?? 50), 200);
+
+    return withRlsContext(this.pool, request.session!, async (client) => {
+      const params: unknown[] = [employeeId];
+      const clauses = ['l.assigned_to = $1'];
+
+      // The bands an admin actually redistributes on. "Untouched" is the one that
+      // matters most: it is the work a rep has not started, which is the work
+      // that can move without disrupting a conversation already in progress.
+      if (band === 'untouched') clauses.push('l.contact_attempts = 0 AND l.closed_at IS NULL AND NOT l.is_converted');
+      else if (band === 'working') clauses.push('l.contact_attempts > 0 AND l.closed_at IS NULL AND NOT l.is_converted');
+      else if (band === 'overdue') clauses.push('l.next_followup_at < CURRENT_DATE AND l.closed_at IS NULL');
+      else if (band === 'stale') {
+        clauses.push(`l.closed_at IS NULL AND NOT l.is_converted
+                      AND coalesce(l.last_contact_at, l.assigned_at) < now() - interval '7 days'`);
+      } else clauses.push('l.closed_at IS NULL AND NOT l.is_converted');
+
+      if (q && q.trim()) {
+        params.push(`%${q.trim()}%`);
+        clauses.push(`(c.full_name ILIKE $${params.length} OR c.primary_phone LIKE $${params.length})`);
+      }
+      const where = clauses.join(' AND ');
+
+      const { rows: [total] } = await client.query<{ n: string }>(
+        `SELECT count(*)::text AS n
+           FROM lead l JOIN customer c ON c.customer_id = l.customer_id
+          WHERE ${where}`,
+        params,
+      );
+
+      const { rows } = await client.query(
+        `SELECT l.lead_id, l.contact_attempts, l.temperature::text AS temperature,
+                l.next_followup_at, l.assigned_at, l.last_contact_at, l.product_interest,
+                c.full_name, c.primary_phone, c.state,
+                s.display_name AS source,
+                d.label AS disposition,
+                round(extract(epoch from now()
+                      - coalesce(l.last_contact_at, l.assigned_at)) / 86400)::int AS days_quiet
+           FROM lead l
+           JOIN customer c ON c.customer_id = l.customer_id
+           JOIN lead_source s ON s.source_id = l.source_id
+           LEFT JOIN disposition d ON d.disposition_id = l.current_disposition_id
+          WHERE ${where}
+          ORDER BY coalesce(l.last_contact_at, l.assigned_at) ASC NULLS FIRST
+          LIMIT ${pageSize}`,
+        params,
+      );
+
+      const { rows: reps } = await client.query(repQuery(false));
+      return { ok: true, total: Number(total?.n ?? '0'), shown: rows.length, leads: rows, reps };
+    });
+  }
+
+  /**
+   * Move assigned work: rep → rep, or rep → back to the pool.
+   *
+   * `reason` is required by the schema below and again in the service. Two
+   * checks for one rule is deliberate: this endpoint is not the only caller the
+   * service will ever have, and the rule belongs with the write.
+   */
+  @Post('transfer')
+  async transfer(@Body() body: unknown, @Req() request: AuthedRequest) {
+    const parsed = transferSchema.safeParse(body);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      return { ok: false, field: issue?.path.join('.'), message: issue?.message };
+    }
+    const d = parsed.data;
+
+    try {
+      const result = await this.transfers.transfer(request.session!, {
+        leadIds: d.leadIds,
+        fromEmployeeId: d.fromEmployeeId,
+        to: d.toEmployeeId ? { kind: 'REP', toEmployeeId: d.toEmployeeId } : { kind: 'POOL' },
+        reason: d.reason,
+      });
+      return { ok: true, ...result };
+    } catch (e) {
+      // A refusal a human caused — same rep, empty reason — is a 200 with a
+      // message the form can show, not a 500 that reads as "the system broke".
+      return { ok: false, message: e instanceof Error ? e.message : 'That move could not be made.' };
+    }
   }
 }
 

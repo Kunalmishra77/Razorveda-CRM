@@ -7,6 +7,7 @@ import {
 } from '@razorveda/shared';
 import { api, ApiError, type PoolLead, type Rep, type Warning } from '../../../lib/api';
 import { s, T } from '../../../lib/ui';
+import { MoveWork } from './MoveWork';
 
 /**
  * Lead Assignment — "the most important admin screen" (docs/07 §3).
@@ -30,6 +31,7 @@ export default function AssignmentConsole() {
   const [error, setError] = useState<string | null>(null);
   const [ageFilter, setAgeFilter] = useState('');
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<'pool' | 'move'>('pool');
 
   const load = useCallback(async () => {
     try {
@@ -113,8 +115,40 @@ export default function AssignmentConsole() {
   return (
     <main style={s.page}>
       <h1 style={s.h1}>Lead assignment</h1>
-      <p style={s.sub}>Filter the pool, tick what you want, pick a rep, assign.</p>
+      <p style={s.sub}>
+        {tab === 'pool'
+          ? 'Filter the pool, tick what you want, pick a rep, assign.'
+          : 'Take work off one rep and give it to another, or send it back to the pool.'}
+      </p>
 
+      {/* Two jobs, not one. Giving out new data and moving somebody's existing
+          work look similar and are not: the second takes something away from a
+          named person, so it has its own reason field and its own safeguards. */}
+      <div style={{ display: 'flex', gap: 6, margin: '0 0 12px' }}>
+        {([
+          ['pool', 'Unassigned pool'],
+          ['move', 'Move work'],
+        ] as const).map(([key, label]) => {
+          const on = tab === key;
+          return (
+            <button
+              key={key} type="button" aria-pressed={on} onClick={() => setTab(key)}
+              style={{
+                font: '500 13.5px/1 inherit', padding: '9px 14px', borderRadius: 4, cursor: 'pointer',
+                border: `1px solid ${on ? T.text : T.line}`,
+                background: on ? T.text : T.card, color: on ? '#fff' : T.text,
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === 'move' && <MoveWork onMoved={() => void load()} />}
+
+      {tab === 'pool' && (
+      <>
       {error && <div role="alert" style={s.notice('bad')}>{error}</div>}
       {note && <div style={s.notice('ok')}>{note}</div>}
 
@@ -254,6 +288,8 @@ export default function AssignmentConsole() {
           </span>
         )}
       </section>
+      </>
+      )}
     </main>
   );
 }
