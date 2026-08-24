@@ -52,7 +52,13 @@ let onboard: OnboardService;
  */
 const letters = () =>
   'Z' + Array.from({ length: 3 }, () => String.fromCharCode(65 + Math.floor(Math.random() * 26))).join('');
-const code = () => `${letters()}-${Math.floor(1000 + Math.random() * 9000)}`;
+/** Every code this file hands out, so afterAll can offboard them again. */
+const created: string[] = [];
+const code = () => {
+  const c = `${letters()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  created.push(c);
+  return c;
+};
 const uniq = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
 
 beforeAll(async () => {
@@ -77,9 +83,30 @@ beforeAll(async () => {
   ownerSession = { userId: owner.user_id, role: 'OWNER' };
 });
 
-// Nothing is torn down: audit_log is append-only and refuses DELETE even for the
-// owner. See repeat-provisional.test.ts.
+/**
+ * THE AUDIT TRAIL STAYS; THE ROSTER DOES NOT HAVE TO.
+ *
+ * The first version tore nothing down at all, on the grounds that audit_log is
+ * append-only and refuses DELETE even for the owner. That is true, and it is not
+ * a reason to leave the people behind: after a few weeks of runs the dev database
+ * held 173 employees nobody had ever hired, and the new Team screen — which shows
+ * the roster, as it should — was unusable.
+ *
+ * An employee row is not append-only. EXITED is the correction a human makes when
+ * someone leaves, every roster query in the product already excludes it, and the
+ * audit rows describing their creation survive untouched. So the accounts are
+ * offboarded rather than deleted, which is both honest and sufficient.
+ */
 afterAll(async () => {
+  if (created.length > 0) {
+    await pool
+      ?.query(
+        `UPDATE employee SET status = 'EXITED'
+           WHERE emp_code = ANY($1::text[]) AND status <> 'EXITED'`,
+        [created],
+      )
+      .catch(() => undefined);
+  }
   await pool?.end();
 });
 

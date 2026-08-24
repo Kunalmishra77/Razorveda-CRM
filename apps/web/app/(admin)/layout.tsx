@@ -40,7 +40,8 @@ const NAV = [
   // wrong. Every other entry is a place you have to already know to look.
   { href: '/today', label: 'Today', hint: 'What is waiting on you' },
   { href: '/upload', label: 'Upload Centre', hint: 'Nine channels, batch history' },
-  { href: '/assignment', label: 'Lead Assignment', hint: 'The unassigned pool' },
+  { href: '/assignment', label: 'Lead Assignment', hint: 'Share out and move work' },
+  { href: '/team', label: 'Team', hint: 'Each rep, and what she is holding' },
   { href: '/reports', label: 'Reports & MIS', hint: 'Daily, weekly, month close' },
   { href: '/security', label: 'Audit & Security', hint: 'Locks, copy log, sessions' },
   { href: '/customers', label: 'Customer 360', hint: 'One person, whole history' },

@@ -15,6 +15,7 @@ import { AssignmentController } from './assignment/assignment.controller.js';
 import { AssignmentService } from './assignment/assignment.service.js';
 import { TransferService } from './assignment/transfer.service.js';
 import { MeController } from './worklist/me.controller.js';
+import { TeamController } from './team/team.controller.js';
 import { WorklistController } from './worklist/worklist.controller.js';
 import { OrdersController } from './orders/orders.controller.js';
 import { StatusService } from './orders/status.service.js';
@@ -66,6 +67,7 @@ import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
     AssignmentController,
     WorklistController,
     MeController,
+    TeamController,
     OrdersController,
     RepeatController,
     FollowupController,

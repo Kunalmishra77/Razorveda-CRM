@@ -37,21 +37,46 @@ const REP = { email: 'nikita@razorveda.local', password: 'razorveda-dev-only' };
 const realAlerts = (page: import('@playwright/test').Page) =>
   page.locator('[role="alert"]').filter({ hasText: /\S/ });
 
+
+/**
+ * Sign in, and say something useful when it does not work.
+ *
+ * /auth/login allows ten attempts per address per five minutes, which is the
+ * right limit and is not being changed for a test. Four tests here each sign in
+ * for real, so running the suite twice inside that window trips it — and the
+ * symptom was a fifteen-second timeout on a URL assertion, which reads as "the
+ * app is broken" rather than "wait five minutes". That cost two debugging cycles
+ * before anyone looked at the response.
+ *
+ * Same principle as the API's error filter (D-296): say what happened and what
+ * to do next, especially to the person least able to guess.
+ */
+async function signIn(page: import('@playwright/test').Page, who: typeof REP): Promise<void> {
+  await page.goto('/login');
+  await expect(page.locator('#email'), 'the login form has no #email field').toBeVisible();
+  await page.fill('#email', who.email);
+  await page.fill('#password', who.password);
+  await page.click('button[type="submit"]');
+
+  const limited = page.locator('[role="alert"]').filter({ hasText: /too many sign-in attempts/i });
+  await Promise.race([
+    page.waitForURL(/\/dashboard/, { timeout: 15_000 }).catch(() => undefined),
+    limited.waitFor({ timeout: 15_000 }).catch(() => undefined),
+  ]);
+  if (await limited.count()) {
+    throw new Error(
+      'Rate limited by /auth/login, not a product failure. Ten attempts per address ' +
+        'per five minutes, and this suite spends four of them. Wait five minutes and re-run.',
+    );
+  }
+}
+
 test.describe('a rep signing in', () => {
   test('lands on her dashboard, and can reach her worklist from it', async ({ page }) => {
-    await page.goto('/login');
-
-    // Fail loudly if the form is not the form. Without this, a renamed input makes
-    // fill() throw a timeout that reads like the app being slow.
-    await expect(page.locator('#email'), 'the login form has no #email field').toBeVisible();
-
-    await page.fill('#email', REP.email);
-    await page.fill('#password', REP.password);
-    await page.click('button[type="submit"]');
-
     // The redirect is role-dependent: EMPLOYEE -> /dashboard, everyone else
     // -> /today. A rep landing on an admin screen would meet a 401 section and
     // read it as being locked out, so the destination is part of the behaviour.
+    await signIn(page, REP);
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
 
     // And it actually rendered, rather than reaching the route and erroring. An
@@ -97,10 +122,7 @@ test.describe('a rep signing in', () => {
     // memory works perfectly in every click-through test and drops the rep at the
     // login screen the first time she refreshes - or when the browser restores her
     // tabs in the morning.
-    await page.goto('/login');
-    await page.fill('#email', REP.email);
-    await page.fill('#password', REP.password);
-    await page.click('button[type="submit"]');
+    await signIn(page, REP);
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
 
     await page.reload();
@@ -115,10 +137,7 @@ test.describe('what a rep must not reach', () => {
     // API guards the endpoints, so what is being checked here is that the UI does
     // not present an admin surface as though it worked - a rep who sees the
     // Security Console and gets empty tables has been told she is allowed in.
-    await page.goto('/login');
-    await page.fill('#email', REP.email);
-    await page.fill('#password', REP.password);
-    await page.click('button[type="submit"]');
+    await signIn(page, REP);
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
 
     await page.goto('/security');

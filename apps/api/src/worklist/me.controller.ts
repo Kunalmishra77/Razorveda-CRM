@@ -4,6 +4,13 @@ import type { Pool } from 'pg';
 import { EMPLOYEE_MAX_PAGE_SIZE } from '@razorveda/shared';
 import { withRlsContext } from '../db/rls-context.js';
 import type { AuthedRequest } from '../auth/session.guard.js';
+import {
+  todaySql, lifetimeSql, periodsSql,
+  type TodayRow, type LifetimeRow, type PeriodRow,
+} from './rep-metrics.sql.js';
+
+/** This screen only ever asks about the signed-in rep. */
+const ME = 'current_employee_id()' as const;
 
 /**
  * A REP'S OWN NUMBERS AND HER OWN LEADS.
@@ -43,83 +50,13 @@ export class MeController {
        * not the same as "leads I hold", and conflating the two is how a rep sees
        * 400 when fourteen arrived this morning.
        */
-      const today = await one<{
-        assigned_today: string; worked_today: string; connected_today: string;
-        pending: string; followups_due: string; overdue: string; repeat_due: string;
-        at_risk: string; open_total: string; to_call: string;
-      }>(
-        `SELECT
-           (SELECT count(*)::text FROM lead
-             WHERE assigned_to = current_employee_id()
-               AND assigned_at >= CURRENT_DATE AND assigned_at < CURRENT_DATE + 1) AS assigned_today,
-           (SELECT count(DISTINCT lead_id)::text FROM activity
-             WHERE employee_id = current_employee_id()
-               AND occurred_at >= CURRENT_DATE AND occurred_at < CURRENT_DATE + 1) AS worked_today,
-           (SELECT count(*)::text FROM activity
-             WHERE employee_id = current_employee_id() AND connected
-               AND occurred_at >= CURRENT_DATE AND occurred_at < CURRENT_DATE + 1) AS connected_today,
-           (SELECT count(*)::text FROM lead
-             WHERE assigned_to = current_employee_id() AND closed_at IS NULL
-               AND NOT is_converted AND contact_attempts = 0) AS pending,
-           (SELECT count(*)::text FROM lead
-             WHERE assigned_to = current_employee_id() AND closed_at IS NULL
-               AND next_followup_at >= CURRENT_DATE
-               AND next_followup_at < CURRENT_DATE + 1) AS followups_due,
-           (SELECT count(*)::text FROM lead
-             WHERE assigned_to = current_employee_id() AND closed_at IS NULL
-               AND next_followup_at < CURRENT_DATE) AS overdue,
-           (SELECT count(*)::text FROM customer
-             WHERE owner_employee_id = current_employee_id()
-               AND next_due_date IS NOT NULL AND next_due_date <= CURRENT_DATE) AS repeat_due,
-           -- 48 hours untouched. At 72 the lead returns to the pool automatically,
-           -- so this is the warning she can still act on.
-           (SELECT count(*)::text FROM lead
-             WHERE assigned_to = current_employee_id() AND closed_at IS NULL
-               AND NOT is_converted AND contact_attempts = 0
-               AND assigned_at <= now() - interval '48 hours') AS at_risk,
-           (SELECT count(*)::text FROM lead
-             WHERE assigned_to = current_employee_id() AND closed_at IS NULL
-               AND NOT is_converted) AS open_total,
-           -- Her actual queue. Open, and not parked for a later date: either she
-           -- never set a follow-up, or the one she set has arrived. A lead she
-           -- deliberately pushed to next Tuesday is not work she owes today, and
-           -- counting it as such is how a rep learns to ignore the number.
-           (SELECT count(*)::text FROM lead
-             WHERE assigned_to = current_employee_id() AND closed_at IS NULL
-               AND NOT is_converted
-               AND (next_followup_at IS NULL OR next_followup_at < CURRENT_DATE + 1)) AS to_call`,
-      );
+      const today = await one<TodayRow>(todaySql(ME));
 
       /**
        * Lifetime, and the history the client specifically asked for: previously
        * assigned, previously worked, total ever.
        */
-      const lifetime = await one<{
-        total_assigned: string; total_worked: string; total_calls: string;
-        total_connected: string; total_orders: string; delivered: string;
-        rto: string; delivered_value: string; closed: string;
-      }>(
-        `SELECT
-           (SELECT count(*)::text FROM lead WHERE assigned_to = current_employee_id()) AS total_assigned,
-           (SELECT count(DISTINCT lead_id)::text FROM activity
-             WHERE employee_id = current_employee_id()) AS total_worked,
-           (SELECT count(*)::text FROM activity WHERE employee_id = current_employee_id()) AS total_calls,
-           (SELECT count(*)::text FROM activity
-             WHERE employee_id = current_employee_id() AND connected) AS total_connected,
-           (SELECT count(*)::text FROM "order"
-             WHERE booked_by_employee_id = current_employee_id()) AS total_orders,
-           (SELECT count(*)::text FROM "order"
-             WHERE booked_by_employee_id = current_employee_id()
-               AND current_status = 'DELIVERED') AS delivered,
-           (SELECT count(*)::text FROM "order"
-             WHERE booked_by_employee_id = current_employee_id()
-               AND current_status IN ('RTO','RETURNED')) AS rto,
-           (SELECT coalesce(sum(final_value),0)::text FROM "order"
-             WHERE booked_by_employee_id = current_employee_id()
-               AND current_status = 'DELIVERED') AS delivered_value,
-           (SELECT count(*)::text FROM lead
-             WHERE assigned_to = current_employee_id() AND closed_at IS NOT NULL) AS closed`,
-      );
+      const lifetime = await one<LifetimeRow>(lifetimeSql(ME));
 
       /**
        * Day / week / month in one pass.
@@ -128,39 +65,7 @@ export class MeController {
        * an index and turned a page like this into a scan of every activity row the
        * rep has ever written (D-233).
        */
-      const periods = await client.query<{
-        period: string; calls: string; connected: string; leads_worked: string;
-        orders: string; delivered: string; delivered_value: string;
-      }>(
-        `WITH bounds AS (
-           SELECT 'today' AS period, CURRENT_DATE AS f, CURRENT_DATE + 1 AS t
-           UNION ALL SELECT 'week',  date_trunc('week', CURRENT_DATE)::date,  CURRENT_DATE + 1
-           UNION ALL SELECT 'month', date_trunc('month', CURRENT_DATE)::date, CURRENT_DATE + 1
-           UNION ALL SELECT 'all',   '2000-01-01'::date,                      CURRENT_DATE + 1
-         )
-         SELECT b.period,
-           (SELECT count(*)::text FROM activity a
-             WHERE a.employee_id = current_employee_id()
-               AND a.occurred_at >= b.f AND a.occurred_at < b.t) AS calls,
-           (SELECT count(*)::text FROM activity a
-             WHERE a.employee_id = current_employee_id() AND a.connected
-               AND a.occurred_at >= b.f AND a.occurred_at < b.t) AS connected,
-           (SELECT count(DISTINCT a.lead_id)::text FROM activity a
-             WHERE a.employee_id = current_employee_id()
-               AND a.occurred_at >= b.f AND a.occurred_at < b.t) AS leads_worked,
-           (SELECT count(*)::text FROM "order" o
-             WHERE o.booked_by_employee_id = current_employee_id()
-               AND o.order_date >= b.f AND o.order_date < b.t) AS orders,
-           (SELECT count(*)::text FROM "order" o
-             WHERE o.booked_by_employee_id = current_employee_id()
-               AND o.current_status = 'DELIVERED'
-               AND o.order_date >= b.f AND o.order_date < b.t) AS delivered,
-           (SELECT coalesce(sum(o.final_value),0)::text FROM "order" o
-             WHERE o.booked_by_employee_id = current_employee_id()
-               AND o.current_status = 'DELIVERED'
-               AND o.order_date >= b.f AND o.order_date < b.t) AS delivered_value
-         FROM bounds b`,
-      );
+      const periods = await client.query<PeriodRow>(periodsSql(ME));
 
       /** Where her calls actually went — the outcome mix, her own MIS row. */
       const outcomes = await client.query<{ label: string; category: string; n: string }>(

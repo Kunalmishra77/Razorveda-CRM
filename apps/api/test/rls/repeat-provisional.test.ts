@@ -84,6 +84,27 @@ beforeAll(async () => {
  * fixtures are named "Repeat Fixture ..." so nobody mistakes them for real data.
  */
 afterAll(async () => {
+  // CLOSE, do not delete — and note which of the two rules applies.
+  //
+  // `lead_assignment` is append-only and refuses DELETE even for the owner, which
+  // is why the customers and their assignment rows stay. The LEAD itself is not
+  // append-only: closing it is the correction a human makes, and it keeps the
+  // whole chain intact.
+  //
+  // Leaving them open was fine while nothing looked at the roster. The Team
+  // screen does: every run added a handful of never-called leads to EMP-001, so
+  // the first rep in the seeded roster slowly accumulated work nobody had given
+  // her, and an admin reading that screen would have been reading test debris.
+  await pool
+    ?.query(
+      `UPDATE lead l SET closed_at = now(), assigned_to = NULL,
+                        close_reason = 'test fixture, not client data'
+         FROM customer c
+        WHERE c.customer_id = l.customer_id
+          AND c.full_name LIKE 'Repeat Fixture%'
+          AND l.closed_at IS NULL`,
+    )
+    .catch(() => undefined);
   await pool?.end();
 });
 

@@ -2,31 +2,39 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError } from '../../../lib/api';
-import { s, T } from '../../../lib/ui';
+import { useParams } from 'next/navigation';
+import { api, ApiError } from '../../../../lib/api';
+import { s, T } from '../../../../lib/ui';
 
 /**
- * A REP'S DASHBOARD — today, and everything before today.
+ * ONE REP, SEEN BY AN ADMIN.
  *
- * The client was explicit: this must not show only today. She should be able to
- * see previous assignments, previous completed work, lifetime totals, and daily /
- * weekly / monthly performance without leaving the page.
+ * The figures are the SAME ONES SHE SEES. Not recomputed for this screen —
+ * `rep-metrics.sql.ts` on the API is the single definition and both endpoints
+ * read it (CLAUDE.md rule 10). If an admin and a rep could disagree about how
+ * many calls she made this week, the conversation that follows is about the
+ * software instead of the work, and neither number is trusted again.
  *
- * So the page is ordered the way she reads it, not the way the tables are shaped:
+ * Two things here that her own dashboard does not have, because they are an
+ * admin's business and not hers:
  *
- *   1. what is left to do right now
- *   2. what she has done today
- *   3. day / week / month side by side
- *   4. where her leads come from and where her calls go
- *   5. everything she has ever been given
+ *   MOVEMENTS   every transfer in or out, with the reason someone typed. This is
+ *               the answer to "why is this on Nikita's list?" and to its more
+ *               pointed cousin, "who took my lead?".
+ *   THE ROSTER  status, target, cap, joining date — the facts that decide what
+ *               she is measured against.
  *
- * One request. Eight endpoints would render in pieces, and a card that has not
- * answered yet looks exactly like a card with nothing in it.
+ * What is NOT here: any way to edit her numbers. Targets live in Master Data
+ * behind the owner-only rule, and nothing on an admin screen should be able to
+ * change what a person is paid on.
  */
 
 interface Row { [k: string]: string }
 interface Payload {
-  me: { name: string; monthlyTarget: string };
+  rep: {
+    employee_id: string; emp_code: string; full_name: string; status: string;
+    monthly_target: string; wip_cap: number; joined_on: string | null; email: string;
+  };
   today: Row;
   lifetime: Row;
   periods: Record<string, Row>;
@@ -36,6 +44,10 @@ interface Payload {
   recent: {
     occurred_at: string; type: string; connected: boolean | null;
     remark_raw: string | null; disposition: string | null; full_name: string | null; lead_id: string;
+  }[];
+  movements: {
+    assigned_at: string; method: string; reason: string | null;
+    from_rep: string | null; to_rep: string | null; customer: string | null;
   }[];
 }
 
@@ -48,26 +60,32 @@ const TONE: Record<string, string> = {
   NOT_CONNECTED: T.faint, CLOSED: T.brass,
 };
 
-export default function Dashboard() {
+const dt = (iso: string): string =>
+  new Date(iso).toLocaleString('en-IN', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
+
+export default function TeamMember() {
+  const { id } = useParams<{ id: string }>();
   const [d, setD] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      setD(await api.get<Payload>('/me/dashboard'));
+      setD(await api.get<Payload>(`/team/${id}`));
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not load your dashboard.');
+      setError(e instanceof ApiError ? e.message : 'Could not load that rep.');
     }
-  }, []);
+  }, [id]);
   useEffect(() => { void load(); }, [load]);
 
   if (error) return <main style={s.page}><div role="alert" style={s.notice('bad')}>{error}</div></main>;
-  if (!d) return <main style={s.page}><p style={s.empty}>Loading your dashboard…</p></main>;
+  if (!d) return <main style={s.page}><p style={s.empty}>Loading…</p></main>;
 
-  const { today, lifetime, periods } = d;
-  const target = n(d.me.monthlyTarget);
+  const { rep, today, lifetime, periods } = d;
+  const target = n(rep.monthly_target);
   const monthValue = n(periods['month']?.['delivered_value']);
-  const pct = target > 0 ? Math.round((monthValue / target) * 100) : 0;
+  const pct = target > 0 ? Math.round((monthValue / target) * 100) : null;
 
   const connectRate = (p?: Row): string => {
     const c = n(p?.['calls']); return c === 0 ? '—' : `${Math.round((n(p?.['connected']) / c) * 100)}%`;
@@ -84,57 +102,53 @@ export default function Dashboard() {
     const given = n(p?.['assigned']);
     return given === 0 ? '—' : `${Math.round((n(p?.['delivered']) / given) * 100)}%`;
   };
-
   const maxCalls = Math.max(1, ...d.daily.map((x) => n(x.calls)));
 
   return (
     <main style={s.page}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
-        <h1 style={{ ...s.h1, margin: 0 }}>Dashboard</h1>
-        <span style={{ ...s.sub, margin: 0 }}>
-          {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
-        </span>
-        <Link href="/worklist" style={{ ...s.btnPrimary, textDecoration: 'none', marginLeft: 'auto' }}>
-          Start calling →
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+        <h1 style={{ ...s.h1, margin: 0 }}>{rep.full_name}</h1>
+        <span style={{ ...s.mono, color: T.faint, fontSize: 12 }}>{rep.emp_code}</span>
+        {rep.status !== 'ACTIVE' && (
+          <span style={s.pill('warn')}>{rep.status.toLowerCase().replace('_', ' ')}</span>
+        )}
+        <Link href="/team" style={{ ...s.sub, margin: 0, color: T.muted, marginLeft: 'auto' }}>
+          ← Team
         </Link>
       </div>
+      <p style={s.sub}>
+        {rep.email}
+        {rep.joined_on ? ` · joined ${new Date(rep.joined_on).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}` : ''}
+        {` · cap ${rep.wip_cap} open leads`}
+      </p>
 
-      {/* 1 — what is still to do */}
-      <Zone title="1 · What is left today" why="The only numbers that change what you do next." />
-      <div style={grid4}>
-        <Kpi v={n(today['open_total'])} k="Open with you" note="your live pipeline" />
-        <Kpi v={n(today['to_call'])} k="To call today"
-          note="open, not parked for later"
-          tone={n(today['to_call']) > 0 ? T.clay : T.text} />
-        <Kpi v={n(today['followups_due'])} k="Follow-ups due today"
-          note={n(today['overdue']) > 0 ? `${n(today['overdue'])} already overdue` : 'none overdue'}
-          tone={n(today['overdue']) > 0 ? T.clay : T.text} />
-        <Kpi v={n(today['pending'])} k="Never called" note="no attempt logged yet" />
+      {/* what she is holding right now */}
+      <Zone title="What she is holding" />
+      <div style={grid}>
+        <Kpi v={n(today['open_total'])} k="Open leads" note="her live pipeline" />
+        <Kpi v={n(today['to_call'])} k="To call today" note="not parked for later" />
+        <Kpi v={n(today['pending'])} k="Never called" note="not started yet" />
+        <Kpi v={n(today['at_risk'])} k="Untouched 48h"
+          note="back to the pool at 72" tone={n(today['at_risk']) > 0 ? T.clay : undefined} />
+        <Kpi v={n(today['overdue'])} k="Overdue follow-ups"
+          note="she promised a call back" tone={n(today['overdue']) > 0 ? T.brass : undefined} />
         <Kpi v={n(today['repeat_due'])} k="Ready to reorder" note="past buyers, due now" tone={T.vine} />
-        <Kpi v={n(today['at_risk'])} k="About to be taken back" note="untouched 48h" tone={T.brass} />
       </div>
+      <p style={{ ...s.sub, margin: '8px 0 0', fontSize: 12.5 }}>
+        Need to rebalance?{' '}
+        <Link href="/assignment" style={{ color: T.indigo }}>Move her work</Link>.
+      </p>
 
-      {/* 2 — what she has done today */}
-      <Zone title="2 · What you have done today" why="Self-reported — you dial from your own handset." />
-      <div style={grid4}>
-        <Kpi v={n(today['assigned_today'])} k="Given to you today" note="by an admin" />
-        <Kpi v={n(today['worked_today'])} k="Leads worked" />
-        <Kpi v={n(today['connected_today'])} k="They answered" note={connectRate(periods['today'])} />
-        <Kpi v={n(periods['today']?.['orders'])} k="Orders booked"
-          note={`₹${money(periods['today']?.['delivered_value'] ?? 0)} delivered`} tone={T.vine} />
-      </div>
-
-      {/* 3 — day / week / month, the comparison the client asked for */}
-      <Zone title="3 · Day, week and month" why="The same four habits, over three windows." />
+      {/* today, week, month, all time — the same table she sees */}
+      <Zone title="Day, week and month" why="The same figures she sees on her own dashboard." />
       <div style={{ ...s.card, overflowX: 'auto' }}>
         <table style={s.table}>
           <thead>
             <tr>
               <th style={s.th} />
-              <th style={{ ...s.th, textAlign: 'right' }}>Today</th>
-              <th style={{ ...s.th, textAlign: 'right' }}>This week</th>
-              <th style={{ ...s.th, textAlign: 'right' }}>This month</th>
-              <th style={{ ...s.th, textAlign: 'right' }}>All time</th>
+              {['Today', 'This week', 'This month', 'All time'].map((h) => (
+                <th key={h} style={{ ...s.th, textAlign: 'right' }}>{h}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -144,7 +158,7 @@ export default function Dashboard() {
               ['Answer rate', connectRate],
               ['Leads worked', (p?: Row) => String(n(p?.['leads_worked']))],
               ['Orders booked', (p?: Row) => String(n(p?.['orders']))],
-              ['Leads given to you', (p?: Row) => String(n(p?.['assigned']))],
+              ['Leads given to her', (p?: Row) => String(n(p?.['assigned']))],
               ['Conversion %', conversion],
               ['Delivered value', (p?: Row) => `₹${money(p?.['delivered_value'] ?? 0)}`],
             ] as const).map(([label, fn]) => (
@@ -159,37 +173,37 @@ export default function Dashboard() {
         </table>
       </div>
 
-      {/* month against target */}
       <div style={{ ...s.card, marginTop: 10 }}>
         <div style={s.cardHead}>
           <span>This month against target</span>
-          <span style={s.pill(pct >= 100 ? 'ok' : 'flat')}>
-            {target === 0 ? 'no target set' : pct >= 100 ? `met · ${pct}%` : `${pct}%`}
+          <span style={s.pill(pct !== null && pct >= 100 ? 'ok' : 'flat')}>
+            {pct === null ? 'no target set' : pct >= 100 ? `met · ${pct}%` : `${pct}%`}
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-          <span style={{ ...s.mono, fontSize: 24, fontWeight: 600, color: pct >= 100 ? T.vine : T.text }}>
+          <span style={{ ...s.mono, fontSize: 24, fontWeight: 600, color: pct !== null && pct >= 100 ? T.vine : T.text }}>
             ₹{money(monthValue)}
           </span>
           <span style={{ color: T.muted, fontSize: 13 }}>
             delivered{target > 0 ? `, of ₹${money(target)}` : ' this month'}
           </span>
         </div>
-        {target > 0 && (
+        {target > 0 && pct !== null && (
           <div style={{ height: 6, background: T.line2, borderRadius: 3, marginTop: 9, overflow: 'hidden' }}>
             <div style={{ width: `${Math.min(100, pct)}%`, height: '100%', background: pct >= 100 ? T.vine : T.indigo }} />
           </div>
         )}
         <p style={{ ...s.sub, margin: '9px 0 0', fontSize: 12.5 }}>
-          Only delivered orders count. A return takes its credit back with it.
+          Delivered only. A return takes its credit back with it. Targets are set in{' '}
+          <Link href="/master" style={{ color: T.indigo }}>Master Data</Link>.
         </p>
       </div>
 
-      {/* 4 — where leads come from, where calls go */}
-      <Zone title="4 · Where your work comes from, and where it goes" />
+      {/* where her work comes from and where it goes */}
+      <Zone title="Where her work comes from, and where it goes" />
       <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(300px,1fr))' }}>
         <div style={s.card}>
-          <div style={s.cardHead}><span>Your leads by source</span><span style={s.pill('flat')}>{d.sources.length} sources</span></div>
+          <div style={s.cardHead}><span>Her leads by source</span><span style={s.pill('flat')}>{d.sources.length}</span></div>
           {d.sources.length === 0 ? <p style={s.empty}>Nothing assigned yet.</p> : d.sources.map((r) => (
             <div key={r.source} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 5 }}>
               <span style={{ minWidth: 150, fontSize: 13.5 }}>{r.source}</span>
@@ -198,9 +212,8 @@ export default function Dashboard() {
             </div>
           ))}
         </div>
-
         <div style={s.card}>
-          <div style={s.cardHead}><span>Where your calls went</span><span style={s.pill('flat')}>all time</span></div>
+          <div style={s.cardHead}><span>Where her calls went</span><span style={s.pill('flat')}>all time</span></div>
           {d.outcomes.length === 0 ? <p style={s.empty}>No calls logged yet.</p> : d.outcomes.map((o) => {
             const max = Math.max(...d.outcomes.map((x) => n(x.n)));
             return (
@@ -220,7 +233,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* last 14 days */}
       <div style={{ ...s.card, marginTop: 10 }}>
         <div style={s.cardHead}><span>Last 14 days</span><span style={s.pill('flat')}>calls per day</span></div>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height: 84, marginTop: 8 }}>
@@ -237,43 +249,75 @@ export default function Dashboard() {
         <p style={{ ...s.sub, margin: '8px 0 0', fontSize: 12 }}>Green means at least one order that day.</p>
       </div>
 
-      {/* 5 — the history the client asked for */}
-      <Zone title="5 · Everything you have ever been given" why="Your full history, not just today." />
-      <div style={grid4}>
+      {/* lifetime */}
+      <Zone title="Everything she has ever been given" />
+      <div style={grid}>
         <Kpi v={n(lifetime['total_assigned'])} k="Leads assigned, ever" />
-        <Kpi v={n(lifetime['total_worked'])} k="Leads you worked"
-          note={`${n(lifetime['total_calls'])} calls in total`} />
+        <Kpi v={n(lifetime['total_worked'])} k="Leads worked" note={`${n(lifetime['total_calls'])} calls`} />
         <Kpi v={n(lifetime['total_orders'])} k="Orders booked"
           note={`${n(lifetime['delivered'])} delivered`} tone={T.vine} />
         <Kpi v={n(lifetime['rto'])} k="Came back" note="RTO or returned"
           tone={n(lifetime['rto']) > 0 ? T.clay : undefined} />
+        <Kpi v={n(lifetime['closed'])} k="Closed leads" />
       </div>
-      <div style={{ ...s.card, marginTop: 10 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 26 }}>
-          <Figure label="Closed leads" value={String(n(lifetime['closed']))} />
-          <Figure label="Answer rate, all time" value={connectRate(periods['all'])} />
-          <Figure label="Delivered value, all time" value={`₹${money(lifetime['delivered_value'] ?? 0)}`} tone={T.vine} />
-        </div>
+
+      {/* movements — the transfer trail */}
+      <Zone title="Work moved in or out"
+        why="Every transfer, with the reason somebody typed at the time." />
+      <div style={s.card}>
+        {d.movements.length === 0 ? (
+          <p style={s.empty}>Nothing has been moved to or from her.</p>
+        ) : (
+          d.movements.map((m, i) => (
+            <div key={i} style={{
+              padding: '7px 0',
+              borderBottom: i < d.movements.length - 1 ? `1px solid ${T.line2}` : 0,
+            }}>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 13 }}>
+                <span style={{ ...s.mono, color: T.faint, fontSize: 11.5, minWidth: 96 }}>
+                  {dt(m.assigned_at)}
+                </span>
+                <span>
+                  {m.customer ?? 'a lead'}
+                  {' — '}
+                  <strong>{m.from_rep ?? 'the pool'}</strong>
+                  {' → '}
+                  <strong>{m.to_rep ?? 'the pool'}</strong>
+                </span>
+                <span style={s.pill(m.method === 'RECALL' ? 'warn' : 'flat')}>
+                  {m.method.toLowerCase()}
+                </span>
+              </div>
+              {m.reason && (
+                <div style={{ color: T.muted, fontSize: 12.5, marginTop: 2, marginLeft: 106 }}>
+                  “{m.reason}”
+                </div>
+              )}
+            </div>
+          ))
+        )}
       </div>
 
       {/* recent activity */}
-      <Zone title="6 · What you did most recently" why="So you can pick up where you left off." />
+      <Zone title="What she did most recently" />
       <div style={s.card}>
         {d.recent.length === 0 ? <p style={s.empty}>Nothing logged yet.</p> : d.recent.map((r, i) => (
-          <div key={i} style={{ display: 'flex', gap: 11, padding: '6px 0', borderBottom: i < d.recent.length - 1 ? `1px solid ${T.line2}` : 0, flexWrap: 'wrap' }}>
+          <div key={i} style={{
+            display: 'flex', gap: 11, padding: '6px 0', flexWrap: 'wrap',
+            borderBottom: i < d.recent.length - 1 ? `1px solid ${T.line2}` : 0,
+          }}>
             <span style={{ ...s.mono, color: T.faint, fontSize: 11.5, minWidth: 96 }}>
-              {new Date(r.occurred_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-              {' '}
-              {new Date(r.occurred_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+              {dt(r.occurred_at)}
             </span>
-            <Link href={`/leads/${r.lead_id}`} style={{ fontWeight: 500, minWidth: 140, color: T.text }}>
-              {r.full_name ?? 'Customer'}
-            </Link>
+            <span style={{ minWidth: 150 }}>{r.full_name ?? 'Customer'}</span>
             <span style={{ color: r.connected ? T.vine : T.muted, fontSize: 13, minWidth: 120 }}>
               {r.disposition ?? r.type.toLowerCase()}
             </span>
             {r.remark_raw && (
-              <span style={{ color: T.muted, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 340 }}>
+              <span style={{
+                color: T.muted, fontSize: 13, overflow: 'hidden',
+                textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 340,
+              }}>
                 “{r.remark_raw}”
               </span>
             )}
@@ -284,7 +328,7 @@ export default function Dashboard() {
   );
 }
 
-const grid4: React.CSSProperties = {
+const grid: React.CSSProperties = {
   display: 'grid', gap: 10,
   gridTemplateColumns: 'repeat(auto-fit, minmax(158px, 1fr))',
 };
@@ -300,26 +344,16 @@ function Zone({ title, why }: { title: string; why?: string }) {
 
 function Kpi({ v, k, note, tone }: {
   v: number; k: string;
-  // `| undefined` spelled out: the project runs with exactOptionalPropertyTypes,
-  // and these are passed as `tone={cond ? T.clay : undefined}`.
   note?: string | undefined; tone?: string | undefined;
 }) {
   return (
     <div style={s.card}>
       <div style={{ ...s.mono, fontSize: 24, fontWeight: 600, lineHeight: 1, color: tone ?? T.text }}>{v}</div>
-      <div style={{ font: '600 10.5px/1 "Barlow Condensed", sans-serif', textTransform: 'uppercase', letterSpacing: '1.2px', color: T.muted, marginTop: 5 }}>{k}</div>
+      <div style={{
+        font: '600 10.5px/1 "Barlow Condensed", sans-serif', textTransform: 'uppercase',
+        letterSpacing: '1.2px', color: T.muted, marginTop: 5,
+      }}>{k}</div>
       {note && <div style={{ color: T.faint, fontSize: 11.5, marginTop: 2 }}>{note}</div>}
-    </div>
-  );
-}
-
-function Figure({ label, value, tone }: {
-  label: string; value: string; tone?: string | undefined;
-}) {
-  return (
-    <div>
-      <div style={{ ...s.mono, fontSize: 20, fontWeight: 600, color: tone ?? T.text }}>{value}</div>
-      <div style={{ font: '600 10.5px/1 "Barlow Condensed", sans-serif', textTransform: 'uppercase', letterSpacing: '1.2px', color: T.muted, marginTop: 4 }}>{label}</div>
     </div>
   );
 }
