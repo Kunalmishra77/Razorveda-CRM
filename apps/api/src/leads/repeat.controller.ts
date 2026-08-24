@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AdminGuard, type AuthedRequest } from '../auth/session.guard.js';
 import { RepeatService } from './repeat.service.js';
 import { FollowupService } from './followup.service.js';
+import { businessToday } from '@razorveda/shared';
 
 /**
  * Running the repeat-purchase engine (Phase 3 deliverable 5).
@@ -34,4 +35,4 @@ const runSchema = z.object({
   asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
-const today = (): string => new Date().toISOString().slice(0, 10);
+const today = (): string => businessToday();

@@ -2,6 +2,7 @@ import { Injectable, Inject, BadRequestException } from '@nestjs/common';
 import pgLib from 'pg';
 import type { Pool } from 'pg';
 import { withRlsContext, type RlsSession } from '../db/rls-context.js';
+import { businessToday } from '@razorveda/shared';
 
 /**
  * Offboarding (Phase 5 deliverable 6).
@@ -82,7 +83,7 @@ export class OffboardingService {
         // sign in again with a password she still knows.
         await client.query(
           `UPDATE app_user SET is_locked = true, locked_reason = $2 WHERE user_id = $1`,
-          [employee.user_id, `Offboarded on ${new Date().toISOString().slice(0, 10)}.`],
+          [employee.user_id, `Offboarded on ${businessToday()}.`],
         );
       } else {
         warnings.push(

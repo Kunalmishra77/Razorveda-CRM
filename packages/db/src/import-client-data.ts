@@ -300,17 +300,40 @@ async function importShopify(ctx: Ctx, dir: string): Promise<void> {
 
     // The order lands as a lead first, so the rep's work on it is visible in the
     // portal the same way every other source is.
+    //
+    // ONE LEAD PER ARRIVAL, NOT PER SHEET ROW. A Shopify export carries a row per
+    // LINE ITEM, so a customer who bought two products is on the sheet twice. The
+    // order below already collapses those with ON CONFLICT (order_number), and
+    // the lead did not — which produced a second lead with no order, no activity
+    // and no way to tell it from a real one. 28 of them, and on the admin's
+    // reassignment screen they showed as the same customer listed twice.
+    //
+    // A lead is "one instance of a customer arriving from a source" (CLAUDE.md
+    // section 5). Two line items is one arrival. The same customer ordering on a
+    // DIFFERENT date is a genuine second arrival, so the date stays in the key.
     const { rows: [lead] } = await ctx.client.query<{ lead_id: string }>(
-      `INSERT INTO lead (customer_id, source_id, assigned_to, assigned_at, received_at,
-                         valid_till, product_interest, contact_attempts, ever_connected,
-                         is_converted, temperature)
-       VALUES ($1,$2,$3,$4::date,$4::date,($4::date + 14),$5,1,true,
-               $6, 'HOT'::lead_temperature)
-       RETURNING lead_id`,
+      `WITH existing AS (
+         SELECT lead_id FROM lead
+          WHERE customer_id = $1 AND source_id = $2 AND received_at::date = $4::date
+          LIMIT 1
+       ), ins AS (
+         INSERT INTO lead (customer_id, source_id, assigned_to, assigned_at, received_at,
+                           valid_till, product_interest, contact_attempts, ever_connected,
+                           is_converted, temperature)
+         SELECT $1,$2,$3,$4::date,$4::date,($4::date + 14),$5,1,true,
+                $6, 'HOT'::lead_temperature
+          WHERE NOT EXISTS (SELECT 1 FROM existing)
+         RETURNING lead_id
+       )
+       SELECT lead_id, true AS created FROM ins
+       UNION ALL
+       SELECT lead_id, false AS created FROM existing
+       LIMIT 1`,
       [customerId, sourceId, agent, orderDate, (r['ProductDeatil'] ?? '').slice(0, 120),
         status === 'delivered'],
     );
-    stats.leads += 1;
+    if (!lead) continue;
+    if ((lead as { created?: boolean }).created !== false) stats.leads += 1;
 
     const total = (Number(base) + Number(upgrade ?? 0)).toFixed(2);
     const current = status === 'delivered' ? 'DELIVERED'
@@ -318,13 +341,13 @@ async function importShopify(ctx: Ctx, dir: string): Promise<void> {
       : status === 'refused' ? 'CANCELLED'
       : status === 'in transit' ? 'DISPATCHED' : 'PENDING';
 
-    await ctx.client.query(
+    const written = await ctx.client.query(
       `INSERT INTO "order" (order_number, customer_id, lead_id, source_id, order_date,
                             final_value, company_base_value, booked_by_employee_id,
                             current_status, ship_state, ship_pincode, delivered_date)
        VALUES ($1,$2,$3,$4,$5::date,$6,$7,$8,$9::order_status,$10,$11,$12)
        ON CONFLICT (order_number) DO NOTHING`,
-      [`SHOP-${p}-${orderDate}`, customerId, lead!.lead_id, sourceId, orderDate,
+      [`SHOP-${p}-${orderDate}`, customerId, lead.lead_id, sourceId, orderDate,
         total,
         // The base value is what the customer had already committed on Shopify.
         // Only the upgrade is the rep's (F7) — this file is the client's own proof
@@ -332,7 +355,11 @@ async function importShopify(ctx: Ctx, dir: string): Promise<void> {
         base, agent, current, city || null, pin || null,
         current === 'DELIVERED' ? orderDate : null],
     );
-    stats.orders += 1;
+    // Count what was WRITTEN, not what was attempted. ON CONFLICT DO NOTHING makes
+    // a duplicate row a no-op, and the old `+= 1` counted it anyway — so the
+    // import's own summary reported more orders than it had created, which is the
+    // one number nobody would think to check.
+    stats.orders += written.rowCount ?? 0;
   }
 }
 

@@ -2,6 +2,7 @@ import { Body, Controller, Get, Inject, Post, Query, Req, UseGuards, BadRequestE
 import { z } from 'zod';
 import { AdminGuard, type AuthedRequest } from '../auth/session.guard.js';
 import { EesService } from './ees.service.js';
+import { businessToday } from '@razorveda/shared';
 
 /**
  * Employee Efficiency Score (docs/03 §5).
@@ -52,4 +53,4 @@ const runSchema = z.object({
   scoreDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
-const today = (): string => new Date().toISOString().slice(0, 10);
+const today = (): string => businessToday();

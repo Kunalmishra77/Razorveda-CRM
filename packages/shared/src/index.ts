@@ -31,3 +31,4 @@ export * from './entities/orders.js';
 export * from './entities/money.js';
 export * from './entities/ingestion.js';
 export * from './entities/governance.js';
+export * from './business-day.js';

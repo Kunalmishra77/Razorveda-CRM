@@ -7,6 +7,7 @@ import { RepeatService } from '../leads/repeat.service.js';
 import { DigestsService } from '../notifications/digests.service.js';
 import { refreshMetrics } from './refresh-metrics.js';
 import { resolveSystemActor } from './system-actor.js';
+import { businessToday } from '@razorveda/shared';
 
 /**
  * THE AUTOMATION THAT WAS BUILT, TESTED, AND NEVER RAN.
@@ -151,7 +152,9 @@ export class SchedulerService {
   async repeatsTick(): Promise<void> {
     await this.exclusively('materialise-repeats', LOCK_KEYS.materialiseRepeats, async () => {
       const session = await resolveSystemActor(this.pool);
-      const asOf = new Date().toISOString().slice(0, 10);
+      // Asia/Kolkata, not UTC. This job runs at 06:30 IST where the two agree, but
+      // a manual re-run at 1am would ask for yesterday and quietly do nothing.
+      const asOf = businessToday();
       const r = await this.repeats.materialiseDue(session, asOf);
       return (
         `${r.leadsCreated} repeat lead(s) created, ${r.skippedAlreadyOpen} already open, ` +

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
-import { SYSTEM_ACTOR_EMAIL } from '@razorveda/shared';
+import { SYSTEM_ACTOR_EMAIL, businessToday } from '@razorveda/shared';
 import { RepeatService } from '../../src/leads/repeat.service.js';
 import type { RlsSession } from '../../src/db/rls-context.js';
 
@@ -32,6 +32,19 @@ let pool: pg.Pool;
 let session: RlsSession;
 let repeats: RepeatService;
 
+/**
+ * "TODAY" IS ASIA/KOLKATA HERE, AND THAT IS THE POINT OF THE HELPER.
+ *
+ * The fixture is created with next_due_date = CURRENT_DATE, which Postgres
+ * answers in IST. These tests used to ask the service for
+ * `new Date().toISOString().slice(0, 10)` — the UTC date — so between 00:00 and
+ * 05:30 IST they asked for YESTERDAY, the fixture was not yet due, and the
+ * service correctly created nothing. All four failed together, at 00:30 IST,
+ * having passed every evening before that.
+ *
+ * The same mistake was in five places in `apps/api/src`, which is the half that
+ * actually mattered.
+ */
 beforeAll(async () => {
   if (!DATABASE_URL) {
     throw new Error('DATABASE_URL is not set. These tests require a live database and will not skip.');
@@ -117,7 +130,7 @@ describe('a repeat lead built from an unconfirmed usage_days', () => {
   it('is marked provisional, and the lead is still created', async () => {
     const customerId = await customerDueToday(true);
 
-    const result = await repeats.materialiseDue(session, new Date().toISOString().slice(0, 10));
+    const result = await repeats.materialiseDue(session, businessToday());
     expect(result.leadsCreated, 'no repeat lead was created at all').toBeGreaterThanOrEqual(1);
 
     const leads = await leadFor(customerId);
@@ -132,7 +145,7 @@ describe('a repeat lead built from an unconfirmed usage_days', () => {
   it('a confirmed usage_days produces a lead with no caveat', async () => {
     const customerId = await customerDueToday(false);
 
-    await repeats.materialiseDue(session, new Date().toISOString().slice(0, 10));
+    await repeats.materialiseDue(session, businessToday());
 
     const leads = await leadFor(customerId);
     expect(leads).toHaveLength(1);
@@ -148,7 +161,7 @@ describe('a repeat lead built from an unconfirmed usage_days', () => {
     // relabelled past leads, the record of what the rep was told when she made
     // the call would change under her - and "did she know?" becomes unanswerable.
     const customerId = await customerDueToday(true);
-    await repeats.materialiseDue(session, new Date().toISOString().slice(0, 10));
+    await repeats.materialiseDue(session, businessToday());
 
     const before = await leadFor(customerId);
     expect(before[0]!.timing_provisional).toBe(true);
@@ -173,7 +186,7 @@ describe('a repeat lead built from an unconfirmed usage_days', () => {
     // left behind would mark the NEXT cycle as an estimate even after the SKU was
     // confirmed - the caveat outliving the reason for it.
     const customerId = await customerDueToday(true);
-    await repeats.materialiseDue(session, new Date().toISOString().slice(0, 10));
+    await repeats.materialiseDue(session, businessToday());
 
     const { rows } = await pool.query<{ next_due_date: string | null; next_due_date_provisional: boolean }>(
       'SELECT next_due_date, next_due_date_provisional FROM customer WHERE customer_id = $1',

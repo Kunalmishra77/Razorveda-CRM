@@ -3,6 +3,7 @@ import pgLib from 'pg';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
 import {
+  businessToday,
   detectColumnShift, describeShift, isException, normaliseName, proposeMappingFromAliases,
   repairEncodingDetailed, validateRow,
   type ColumnCheck, type TargetField, type TypeContract,
@@ -398,7 +399,7 @@ export class IngestionController {
   }
 }
 
-const today = (): string => new Date().toISOString().slice(0, 10);
+const today = (): string => businessToday();
 
 /**
  * Type contracts per column (docs/06 §5.1, O-12). Anything unrecognised is
