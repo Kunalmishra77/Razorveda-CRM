@@ -82,7 +82,7 @@ export class RepeatService {
 
     const { rows } = await client.query<{ lead_id: string; owner: string }>(
       `WITH due AS (
-         SELECT c.customer_id, c.owner_employee_id
+         SELECT c.customer_id, c.owner_employee_id, c.next_due_date_provisional
            FROM customer c
           WHERE c.next_due_date IS NOT NULL
             AND c.next_due_date <= $1::date
@@ -101,13 +101,19 @@ export class RepeatService {
          -- Cleared in the same statement that creates the lead. If this were a
          -- separate UPDATE, a crash between the two would leave the customer due
          -- forever and she would be added to the list again every night.
-         UPDATE customer SET next_due_date = NULL, updated_at = now()
+         UPDATE customer SET next_due_date = NULL, next_due_date_provisional = false,
+                            updated_at = now()
           WHERE customer_id IN (SELECT customer_id FROM due)
        )
        INSERT INTO lead (customer_id, source_id, assigned_to, assigned_at, received_at,
-                         valid_till, temperature)
+                         valid_till, temperature, timing_provisional)
+       -- timing_provisional is CARRIED, not looked up later. The due date came
+       -- from a SKU's usage_days, and those are still reverse-engineered guesses
+       -- (O-03). Confirming a SKU next month must not retroactively claim that a
+       -- call the rep already made was made on a confirmed date.
        SELECT d.customer_id, s.source_id, d.owner_employee_id, now(), now(),
-              (CURRENT_DATE + s.validity_days)::date, 'WARM'::lead_temperature
+              (CURRENT_DATE + s.validity_days)::date, 'WARM'::lead_temperature,
+              d.next_due_date_provisional
          FROM due d, lead_source s
         WHERE s.code = 'DELIVERED_REPEAT'
     RETURNING lead_id, assigned_to AS owner`,

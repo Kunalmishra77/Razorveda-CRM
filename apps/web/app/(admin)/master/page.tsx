@@ -23,7 +23,7 @@ import { s, T } from '../../../lib/ui';
 interface Sku {
   sku_id: string; sku_code: string; product_name: string; product_line: string;
   mrp: string; shopify_base_price: string | null; shopify_base_price_confirmed: boolean;
-  usage_days: number | null; confirmed_by: string | null;
+  usage_days: number | null; usage_days_confirmed: boolean; confirmed_by: string | null;
 }
 
 interface Slab {
@@ -112,6 +112,10 @@ export default function MasterDataPage() {
   }
 
   const unconfirmed = skus.filter((k) => !k.shopify_base_price_confirmed);
+  // Separate count, because these two block different things. An unconfirmed
+  // PRICE parks the order and pays the rep nothing; an unconfirmed USAGE_DAYS
+  // still schedules the reorder but stamps the rep's lead "timing estimated".
+  const usageUnconfirmed = skus.filter((k) => k.usage_days !== null && !k.usage_days_confirmed);
 
   return (
     <main style={s.page}>
@@ -134,6 +138,24 @@ export default function MasterDataPage() {
         </div>
 
         {skuWarning && <div style={s.notice('warn')}>{skuWarning}</div>}
+
+        {/*
+          A SEPARATE notice, because it blocks something different. An unconfirmed
+          PRICE parks the order and the rep earns nothing on it. An unconfirmed
+          usage_days does not block anything - the reorder is still scheduled - but
+          the date is a guess reverse-engineered from past orders (O-03), and since
+          the repeat engine started running daily those guesses decide which
+          customer a rep rings on which day. Her lead says "timing estimated" until
+          somebody here vouches for the number.
+        */}
+        {usageUnconfirmed.length > 0 && (
+          <div style={s.notice('warn')}>
+            {usageUnconfirmed.length} product(s) have an <strong>estimated</strong> repeat interval.
+            Reorders are still scheduled from them, and every lead they produce is marked
+            &ldquo;timing estimated&rdquo; on the rep&rsquo;s worklist. Enter the real number of days
+            the pack lasts to remove the caveat.
+          </div>
+        )}
 
         {skus.length === 0 ? (
           <p style={s.empty}>No active products.</p>

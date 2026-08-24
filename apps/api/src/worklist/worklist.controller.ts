@@ -89,6 +89,7 @@ export class WorklistController {
          )
          SELECT l.lead_id, l.next_followup_at, c.next_due_date AS repeat_due_date,
                 l.assigned_at, l.valid_till, l.is_converted, l.closed_at,
+                l.timing_provisional,
                 c.full_name, c.primary_phone, c.state, c.lifetime_orders,
                 s.display_name AS source, l.product_interest, l.contact_attempts,
                 d.label AS disposition
@@ -171,6 +172,15 @@ export class WorklistController {
             followupAt: row.next_followup_at,
             validTill: row.valid_till,
             lifetimeOrders: row.lifetime_orders,
+            // Ships WITH the lead rather than being fetched separately by the UI,
+            // for the same reason the self-reported dials flag does: a caveat the
+            // client has to remember to ask for is a caveat that stops being shown.
+            //
+            // TRUE means the due date came from a usage_days figure nobody has
+            // confirmed (O-03). She still gets the lead - missing a reorder is
+            // worse - but she is told the timing is an estimate, so "you are early"
+            // from the customer is information rather than an embarrassment.
+            timingProvisional: row.timing_provisional,
           };
         }),
       };
@@ -310,6 +320,7 @@ export class WorklistController {
 
 interface WorklistRow {
   lead_id: string;
+  timing_provisional: boolean;
   next_followup_at: string | Date | null;
   repeat_due_date: string | Date | null;
   assigned_at: string | Date | null;

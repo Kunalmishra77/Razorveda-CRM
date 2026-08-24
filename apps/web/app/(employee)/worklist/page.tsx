@@ -27,6 +27,14 @@ interface WorklistLead {
   disposition: string | null;
   followupAt: string | null;
   lifetimeOrders: number;
+  /**
+   * The due date came from a usage_days figure nobody has confirmed (O-03), so
+   * the timing is an estimate. She still gets the lead - missing a reorder is
+   * worse than calling a few days out - but she is told, because a rep who knows
+   * the date is approximate handles "you're early" completely differently from
+   * one who thought the system was certain.
+   */
+  timingProvisional: boolean;
 }
 
 interface Payload {
@@ -143,6 +151,22 @@ export default function Worklist() {
                     {l.lifetimeOrders > 0 && (
                       <span style={{ ...s.mono, color: T.vine, fontSize: 11, marginLeft: 6 }}>
                         {l.lifetimeOrders}× buyer
+                      </span>
+                    )}
+                    {/*
+                      Words, not a coloured dot. The same rule as the band pills:
+                      a rep scanning fifty rows must be able to read the caveat,
+                      and `title` carries the reason for anyone who wants it.
+                    */}
+                    {l.timingProvisional && (
+                      <span
+                        title={
+                          'The reorder date is an estimate. How long this product lasts has not ' +
+                          'been confirmed yet, so she may not have run out. Ask before assuming.'
+                        }
+                        style={{ ...s.pill('flat'), borderColor: T.clay, color: T.clay, fontSize: 10, marginLeft: 6 }}
+                      >
+                        timing estimated
                       </span>
                     )}
                   </td>

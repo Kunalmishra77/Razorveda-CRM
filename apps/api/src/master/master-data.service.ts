@@ -44,13 +44,18 @@ export class MasterDataService {
       const { rows } = await client.query(
         `SELECT s.sku_id, s.sku_code, s.product_name, p.name AS product_line,
                 s.mrp::text, s.shopify_base_price::text, s.shopify_base_price_confirmed,
-                s.shopify_base_price_set_at, s.usage_days, s.is_active,
+                s.shopify_base_price_set_at, s.usage_days, s.usage_days_confirmed,
+                s.is_active,
                 u.email AS confirmed_by
            FROM sku s
            JOIN product_line p ON p.line_id = s.line_id
            LEFT JOIN app_user u ON u.user_id = s.shopify_base_price_set_by
           WHERE s.is_active
-          ORDER BY s.shopify_base_price_confirmed, p.name, s.product_name`,
+          -- Both unconfirmed things float to the top. This screen is a to-do
+          -- list before it is a reference table, and the repeat engine now runs
+          -- daily on these usage_days figures.
+          ORDER BY s.shopify_base_price_confirmed, s.usage_days_confirmed,
+                   p.name, s.product_name`,
       );
       return rows;
     });
@@ -140,14 +145,31 @@ export class MasterDataService {
       throw new BadRequestException('Usage days must be a whole number between 1 and 365, or blank.');
     }
     return this.write(session, async (client) => {
-      const { rowCount } = await client.query(`UPDATE sku SET usage_days = $2 WHERE sku_id = $1`, [
-        skuId, usageDays,
-      ]);
+      // An admin TYPING the number is the confirmation. That is the whole point of
+      // the flag: the seeded values are reverse-engineered guesses (O-03), and
+      // until a human vouches for one, every repeat lead it produces is marked
+      // provisional on the rep's worklist.
+      //
+      // Blanking it (null) UNCONFIRMS. "I do not know this" is not a confirmed
+      // value, and leaving the flag true would keep asserting a figure nobody
+      // stands behind.
+      const { rowCount } = await client.query(
+        `UPDATE sku
+            SET usage_days = $2,
+                usage_days_confirmed = ($2 IS NOT NULL),
+                usage_days_set_by = $3,
+                usage_days_set_at = now()
+          WHERE sku_id = $1`,
+        [skuId, usageDays, session.userId],
+      );
       if (!rowCount) throw new BadRequestException('That product was not found.');
       await client.query(
         `INSERT INTO audit_log (actor_id, actor_role, action, entity_type, entity_id, after_json)
          VALUES ($1,$2::user_role,'SKU_USAGE_DAYS_SET','sku',$3,$4::jsonb)`,
-        [session.userId, session.role, skuId, JSON.stringify({ usage_days: usageDays })],
+        [
+          session.userId, session.role, skuId,
+          JSON.stringify({ usage_days: usageDays, usage_days_confirmed: usageDays !== null }),
+        ],
       );
       return { ok: true };
     });

@@ -57,7 +57,22 @@ CREATE TABLE sku (
   shopify_base_price_confirmed  boolean NOT NULL DEFAULT false,
   shopify_base_price_set_by     uuid,   -- FK added after app_user exists, below
   shopify_base_price_set_at     timestamptz,
-  usage_days          int,                    -- drives the repeat-purchase engine
+  -- Drives the repeat-purchase engine, and the SEEDED VALUES ARE GUESSES
+  -- reverse-engineered from the client's order data (O-03).
+  --
+  -- That was harmless while nothing ran: the engine existed and was never called.
+  -- Once it runs daily (D-254) these numbers decide WHICH CUSTOMER A REP RINGS ON
+  -- WHICH DAY, and a rep calling a fortnight before the customer has run out
+  -- costs exactly the credibility this engine is supposed to earn.
+  --
+  -- So the number and its provenance are separate, the same way shopify_base_price
+  -- already does it. Unconfirmed usage_days still schedules a repeat - missing the
+  -- reorder entirely is worse - but the lead it produces is marked PROVISIONAL so
+  -- the rep knows the timing is an estimate rather than a promise (D-270).
+  usage_days          int,
+  usage_days_confirmed  boolean NOT NULL DEFAULT false,
+  usage_days_set_by     uuid,   -- FK added after app_user exists, below
+  usage_days_set_at     timestamptz,
   name_aliases        text[] DEFAULT '{}',
   is_active           boolean NOT NULL DEFAULT true,
   created_at          timestamptz NOT NULL DEFAULT now(),
@@ -82,6 +97,10 @@ CREATE TABLE app_user (
 ALTER TABLE sku
   ADD CONSTRAINT sku_base_price_set_by_fkey
   FOREIGN KEY (shopify_base_price_set_by) REFERENCES app_user(user_id);
+
+ALTER TABLE sku
+  ADD CONSTRAINT sku_usage_days_set_by_fkey
+  FOREIGN KEY (usage_days_set_by) REFERENCES app_user(user_id);
 
 -- Server-side sessions. JWTs alone cannot satisfy docs/05, which requires a
 -- single active session per employee and immediate revocation — a stateless
@@ -198,6 +217,11 @@ CREATE TABLE customer (
   owner_employee_id  uuid REFERENCES employee(employee_id),
   owner_expires_at   timestamptz,
   next_due_date      date,
+  -- TRUE when the SKU that produced next_due_date has unconfirmed usage_days, so
+  -- the date is an estimate. Stored rather than derived: the order and lines that
+  -- produced it are already in the past by the time a rep sees the lead, and
+  -- re-deriving would mean re-reading them on every worklist load.
+  next_due_date_provisional boolean NOT NULL DEFAULT false,
   do_not_call        boolean NOT NULL DEFAULT false,
   merged_into        uuid REFERENCES customer(customer_id),
   -- Provenance, so a rollback can NAME the customers it is leaving behind.
@@ -311,6 +335,12 @@ CREATE TABLE lead (
   contact_attempts       int NOT NULL DEFAULT 0,     -- Fq
   ever_connected         boolean NOT NULL DEFAULT false,  -- CD/ND
   next_followup_at       timestamptz,
+  -- TRUE on a DELIVERED_REPEAT lead whose due date came from unconfirmed
+  -- usage_days (O-03). Copied from customer.next_due_date_provisional when the
+  -- lead is created, not read live: what matters is what was known at the moment
+  -- the rep was told to call, and confirming the SKU later must not silently
+  -- rewrite the history of a call she has already made.
+  timing_provisional     boolean NOT NULL DEFAULT false,
   is_converted           boolean NOT NULL DEFAULT false,
   converted_order_id     uuid,
   closed_at              timestamptz,

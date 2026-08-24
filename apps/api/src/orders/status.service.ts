@@ -227,7 +227,18 @@ export class StatusService {
   private async scheduleRepeat(client: PoolClient, orderId: string): Promise<string | null> {
     const { rows: [due] } = await client.query<{ next_due_date: string | null }>(
       `WITH shortest AS (
-         SELECT o.customer_id, o.delivered_date, min(s.usage_days) AS usage_days
+         SELECT o.customer_id, o.delivered_date, min(s.usage_days) AS usage_days,
+                -- Is the SHORTEST SKU's figure confirmed? Evaluated over the rows
+                -- that tie at the minimum, because that is the SKU the date is
+                -- computed from. An unconfirmed SKU that runs out much later has
+                -- no bearing on whether THIS date is an estimate.
+                bool_and(s.usage_days_confirmed) FILTER (
+                  WHERE s.usage_days = (
+                    SELECT min(s2.usage_days)
+                      FROM order_line ol2 JOIN sku s2 ON s2.sku_id = ol2.sku_id
+                     WHERE ol2.order_id = o.order_id AND s2.usage_days IS NOT NULL
+                  )
+                ) AS driver_confirmed
            FROM "order" o
            JOIN order_line ol ON ol.order_id = o.order_id
            JOIN sku s ON s.sku_id = ol.sku_id
@@ -236,6 +247,10 @@ export class StatusService {
        )
        UPDATE customer c
           SET next_due_date = (shortest.delivered_date + shortest.usage_days - 5),
+              -- NULL reads as UNCONFIRMED: a null here means the FILTER matched
+              -- nothing, and an unknown provenance must present as an estimate
+              -- rather than as a promise.
+              next_due_date_provisional = NOT coalesce(shortest.driver_confirmed, false),
               -- The rep who delivered it owns the reorder. Without an owner the
               -- lead would land in the unassigned pool and the relationship that
               -- earned the repeat would be handed to a stranger.
