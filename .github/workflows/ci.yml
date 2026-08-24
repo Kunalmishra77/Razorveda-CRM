@@ -86,6 +86,90 @@ jobs:
           name: npm-audit
           path: audit.json
 
+  # THE WEB LAYER, WHICH HAD NO BEHAVIOURAL COVERAGE AT ALL.
+  #
+  # Twelve routes, typechecked and built, with nothing exercising them. Everything
+  # else in this pipeline proves the API or the database: RLS isolation, the money
+  # rules, the metric definitions. All of that can be perfectly correct while the
+  # login form posts to the wrong path, the session cookie is dropped, or the
+  # worklist renders an error because a field was renamed on the server.
+  #
+  # Four tests, covering the seams between the browser and the API and stopping
+  # there. The first run found a real defect: a rep who opened /security was served
+  # the complete admin shell, nav and all, with empty tables and no explanation.
+  #
+  # A SEPARATE JOB rather than bolted onto rls, so a browser failure is never
+  # mistaken for an isolation failure, and so the two run in parallel.
+  e2e:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: razorveda_migrator
+          POSTGRES_PASSWORD: localdev
+          POSTGRES_DB: razorveda
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U razorveda_migrator"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://razorveda_migrator:localdev@localhost:5433/razorveda
+      DATABASE_URL_APP: postgresql://razorveda_app:localdev@localhost:5433/razorveda
+      JWT_SECRET: ci-only-secret-value-at-least-32-characters-long
+      RATE_LIMIT_DISABLED: '1'
+      SCHEDULER_DISABLED: '1'
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+
+      - name: Migrate and seed
+        run: |
+          npm run db:migrate
+          npm run db:seed
+          npm run db:seed:dev
+
+      # Chromium only. Firefox and WebKit would triple the download to re-test the
+      # same four seams in browsers the client's team does not use.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build web
+        run: npm run build -w @razorveda/web
+
+      - name: E2E
+        run: |
+          (cd apps/api && node ../../node_modules/tsx/dist/cli.mjs src/main.ts > /tmp/api.log 2>&1 &)
+          (cd apps/web && node ../../node_modules/next/dist/bin/next start -p 3000 > /tmp/web.log 2>&1 &)
+          for i in $(seq 1 90); do
+            a=$(curl -s -m 2 -o /dev/null -w "%{http_code}" http://localhost:3001/health || true)
+            w=$(curl -s -m 2 -o /dev/null -w "%{http_code}" http://localhost:3000/login || true)
+            if [ "$a" = "200" ] && [ "$w" = "200" ]; then break; fi
+            sleep 1
+          done
+          if [ "$a" != "200" ] || [ "$w" != "200" ]; then
+            echo "api=$a web=$w"; echo '--- api ---'; cat /tmp/api.log; echo '--- web ---'; cat /tmp/web.log; exit 1
+          fi
+          npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
   # THE TESTS THAT HAVE ACTUALLY CAUGHT THINGS.
   #
   # This job was absent for a while, and the note in its place said so honestly:

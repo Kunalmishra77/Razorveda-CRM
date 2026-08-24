@@ -18,3 +18,8 @@ tmp/
 
 apps/web/next-dev*.log
 .backups/
+
+# Playwright output. Traces and screenshots are debugging artefacts of a specific
+# failing run; CI uploads them as an artifact rather than anyone committing them.
+/playwright-report/
+/test-results/
