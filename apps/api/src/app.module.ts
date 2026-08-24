@@ -30,6 +30,7 @@ import { ReportsController } from './reports/reports.controller.js';
 import { DigestsService } from './notifications/digests.service.js';
 import { SchedulerService } from './jobs/scheduler.service.js';
 import { PendingCreditService } from './master/pending-credit.service.js';
+import { OnboardService } from './employees/onboard.service.js';
 import { DigestsController } from './notifications/digests.controller.js';
 import { SecurityConsoleService } from './security/console.service.js';
 import { OffboardingService } from './security/offboarding.service.js';
@@ -102,6 +103,7 @@ import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
     { provide: ReportsService, useFactory: (pool: pg.Pool) => new ReportsService(pool), inject: [pg.Pool] },
     { provide: ExportService, useFactory: (pool: pg.Pool) => new ExportService(pool), inject: [pg.Pool] },
     { provide: DigestsService, useFactory: (pool: pg.Pool) => new DigestsService(pool), inject: [pg.Pool] },
+    { provide: OnboardService, useFactory: (pool: pg.Pool) => new OnboardService(pool), inject: [pg.Pool] },
     {
       provide: PendingCreditService,
       useFactory: (pool: pg.Pool) => new PendingCreditService(pool),

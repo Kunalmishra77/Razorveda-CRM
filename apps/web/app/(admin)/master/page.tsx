@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../../../lib/api';
 import { s, T } from '../../../lib/ui';
 import { PriceUploadPanel } from './price-upload-panel';
+import { AddEmployeePanel } from './add-employee-panel';
 
 /**
  * Master Data (docs/07 §6).
@@ -55,6 +56,17 @@ export default function MasterDataPage() {
   const [note, setNote] = useState<string | null>(null);
   const [priceDraft, setPriceDraft] = useState<Record<string, string>>({});
   const [targetDraft, setTargetDraft] = useState<Record<string, string>>({});
+  // Needed to decide whether the Role selector is offered at all. The API
+  // refuses an admin creating an admin regardless; this keeps the form from
+  // showing a field the server will reject.
+  const [isOwner, setIsOwner] = useState(false);
+
+  useEffect(() => {
+    api
+      .get<{ session: { role: string } }>('/auth/me')
+      .then((r) => setIsOwner(r.session.role === 'OWNER'))
+      .catch(() => setIsOwner(false));
+  }, []);
 
   const load = useCallback(async () => {
     setError(null);
@@ -330,6 +342,13 @@ export default function MasterDataPage() {
           Targets are delivery targets. The RTO-adjusted booking figure derived from them is built
           and shown in Reports as a comparison, but is not yet in force.
         </p>
+
+        {/*
+          Inside the roster card rather than a card of its own: adding someone and
+          seeing who is already there are the same task, and an admin looking for
+          "where do I add the new girl" looks at the list of people first.
+        */}
+        <AddEmployeePanel isOwner={isOwner} onAdded={load} />
       </section>
     </main>
   );

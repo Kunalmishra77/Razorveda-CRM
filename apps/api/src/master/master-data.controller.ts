@@ -2,6 +2,7 @@ import { Body, Controller, Get, Inject, Post, Req, UseGuards, BadRequestExceptio
 import { z } from 'zod';
 import { AdminGuard, type AuthedRequest } from '../auth/session.guard.js';
 import { PendingCreditService } from './pending-credit.service.js';
+import { OnboardService } from '../employees/onboard.service.js';
 import { MasterDataService } from './master-data.service.js';
 
 /**
@@ -14,6 +15,7 @@ export class MasterDataController {
   constructor(
     @Inject(MasterDataService) private readonly master: MasterDataService,
     @Inject(PendingCreditService) private readonly pendingCredit: PendingCreditService,
+    @Inject(OnboardService) private readonly onboard: OnboardService,
   ) {}
 
   @Get('skus')
@@ -133,6 +135,20 @@ export class MasterDataController {
     return { ok: true, employees: await this.master.roster(request.session!) };
   }
 
+  /**
+   * Adds someone to the roster and creates their login.
+   *
+   * The temporary password comes back ONCE, in this response, and is never
+   * readable again - only its Argon2id hash is stored. The admin passes it on.
+   * There is no reset flow in v1, so losing it means adding the person again.
+   */
+  @Post('roster/add')
+  async addEmployee(@Body() body: unknown, @Req() request: AuthedRequest) {
+    const parsed = newEmployeeSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message);
+    return { ok: true, ...(await this.onboard.add(request.session!, parsed.data)) };
+  }
+
   @Post('roster/target')
   async target(@Body() body: unknown, @Req() request: AuthedRequest) {
     const parsed = targetSchema.safeParse(body);
@@ -156,6 +172,25 @@ const priceSchema = z.object({ skuId: z.string().uuid(), basePrice: money });
  * wrong file rather than a big catalogue, and it should be refused with a sentence
  * rather than accepted and audited 500 times.
  */
+/**
+ * A new joiner.
+ *
+ * `role` is accepted but NOT trusted: creating an ADMIN is a change of role and
+ * therefore owner-only (OWNER_ONLY_FIELDS), and the service refuses it for anyone
+ * else. `monthlyTarget` is deliberately absent - an admin who could set targets
+ * could set their own incentive, so the owner does it afterwards.
+ */
+const newEmployeeSchema = z.object({
+  empCode: z.string().min(3).max(12),
+  fullName: z.string().min(2).max(80),
+  email: z.string().min(5).max(120),
+  role: z.enum(['EMPLOYEE', 'ADMIN']).default('EMPLOYEE'),
+  wipCap: z.coerce.number().int().min(1).max(2000).optional(),
+  shiftStart: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  shiftEnd: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  joinedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
 const priceUploadSchema = z.object({
   rows: z
     .array(z.object({ skuCode: z.string().min(1).max(64), basePrice: z.string().min(1).max(20) }))
