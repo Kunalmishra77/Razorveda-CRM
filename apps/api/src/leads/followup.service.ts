@@ -58,10 +58,40 @@ export class FollowupService {
    * the policy. A rep calling it sees only her own, which is the right answer for
    * a "what am I about to lose" view.
    */
+  /**
+   * HOW MANY, without paying for WHO.
+   *
+   * `findUntouched` joins customer (for the name) and employee (for the rep), and
+   * on the client's volume that is ~24,000 index scans into `customer` — each one
+   * evaluating the `customer_isolation` policy, because a policy is a query
+   * (D-234). Five and a half seconds, to render one number on the admin home page.
+   *
+   * A count needs neither join. Same predicate, same source of truth — it is
+   * `untouchedPredicate` in both places, so the two can never disagree about what
+   * "untouched" means — but nothing is dereferenced that the answer does not need.
+   */
+  async countUntouched(
+    session: RlsSession,
+    asOf: string,
+    thresholdHours: number = UNTOUCHED_ALERT_HOURS,
+  ): Promise<number> {
+    return withRlsContext(this.pool, session, async (client) => {
+      const { rows: [row] } = await client.query<{ n: string }>(
+        `SELECT count(*)::text AS n
+           FROM lead l
+          WHERE ${untouchedPredicate('l')}
+            AND l.assigned_at <= $1::timestamptz - make_interval(hours => $2::int)`,
+        [asOf, thresholdHours],
+      );
+      return Number(row?.n ?? '0');
+    });
+  }
+
   async findUntouched(
     session: RlsSession,
     asOf: string,
     thresholdHours: number = UNTOUCHED_ALERT_HOURS,
+    limit?: number,
   ): Promise<readonly UntouchedLead[]> {
     return withRlsContext(this.pool, session, async (client) => {
       const { rows } = await client.query<{
@@ -79,7 +109,8 @@ export class FollowupService {
            JOIN employee e ON e.employee_id = l.assigned_to
           WHERE ${untouchedPredicate('l')}
             AND l.assigned_at <= $1::timestamptz - make_interval(hours => $2::int)
-          ORDER BY l.assigned_at`,
+          ORDER BY l.assigned_at
+          ${limit !== undefined ? 'LIMIT ' + Number(limit) : ''}`,
         [asOf, thresholdHours],
       );
       return rows.map((r) => ({

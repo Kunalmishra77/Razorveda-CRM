@@ -145,8 +145,10 @@ describe('the guard that matters most', () => {
         'not to pay anyone for it (D-178).',
     ).toEqual([]);
 
-    // And it is not even listed as waiting, so it cannot be completed by hand either.
-    const listed = await service.list(session);
+    // And it is not even listed as waiting, so it cannot be completed by hand
+    // either. Uncapped on purpose: "not in the first hundred" would satisfy this
+    // assertion without the guard existing at all.
+    const listed = await service.list(session, 100_000);
     expect(listed.some((o) => o.orderId === f.orderId)).toBe(false);
   });
 });
@@ -155,7 +157,14 @@ describe('an order booked while the price was unconfirmed', () => {
   it('is listed as waiting, with the reason', async () => {
     const f = await bookedWithoutCredit({ priceConfirmed: false });
 
-    const listed = await service.list(session);
+    // An explicit large limit, because `list()` now returns a capped PAGE by
+    // default — oldest first, so an admin sees the reps who have waited longest.
+    // This fixture is booked today and therefore last in that order.
+    //
+    // The cap is a transport decision and this test is about the RULE, so it asks
+    // for everything on purpose rather than quietly passing because the dataset
+    // happened to be small. Catching this change is exactly what the test is for.
+    const listed = await service.list(session, 100_000);
     const mine = listed.find((o) => o.orderId === f.orderId);
 
     expect(mine, 'the order is not listed as waiting for credit').toBeTruthy();

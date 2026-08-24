@@ -93,9 +93,39 @@ const ALREADY_SETTLED = ['DELIVERED', 'RTO', 'RETURNED'];
 export class PendingCreditService {
   constructor(@Inject(pgLib.Pool) private readonly pool: Pool) {}
 
-  /** What is waiting, and why. Read-only. */
-  async list(session: RlsSession): Promise<readonly PendingOrder[]> {
-    return withRlsContext(this.pool, session, async (client) => this.evaluate(client));
+  /**
+   * What is waiting, and why. Read-only.
+   *
+   * CAPPED, AND THE COUNT IS STILL TRUE.
+   *
+   * The first version evaluated every candidate and returned all of them. On the
+   * client's volume that is 26,869 orders — each one run through
+   * `computeAttribution` — sent down the wire so a screen could draw one number.
+   * The admin home page waited on it and rendered without that card entirely.
+   *
+   * Exactly the shape of D-231, where a rep received all 14,381 of her leads
+   * because nothing capped the page.
+   *
+   * So `waiting` is an exact SQL count — cheap, and no attribution needed to know
+   * an order has no ledger row — while the detailed, expensive evaluation runs
+   * only over the page actually being shown. The count is never the length of
+   * what was returned.
+   */
+  async summary(session: RlsSession): Promise<{ waiting: number }> {
+    return withRlsContext(this.pool, session, async (client) => {
+      const { rows: [row] } = await client.query<{ n: string }>(
+        `SELECT count(*)::text AS n
+           FROM "order" o
+          WHERE o.ingestion_batch_id IS NULL
+            AND o.booked_by_employee_id IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM attribution_ledger l WHERE l.order_id = o.order_id)`,
+      );
+      return { waiting: Number(row?.n ?? '0') };
+    });
+  }
+
+  async list(session: RlsSession, limit = 100): Promise<readonly PendingOrder[]> {
+    return withRlsContext(this.pool, session, async (client) => this.evaluate(client, limit));
   }
 
   /**
@@ -108,6 +138,9 @@ export class PendingCreditService {
    */
   async complete(session: RlsSession): Promise<CompleteResult> {
     return withRlsContext(this.pool, session, async (client) => {
+      // No limit here, deliberately. Capping the page an admin READS is a
+      // transport decision; capping what gets PAID would quietly credit the first
+      // hundred orders and report success.
       const evaluated = await this.evaluate(client);
 
       let completed = 0;
@@ -147,7 +180,7 @@ export class PendingCreditService {
    * entire import, which at 180,000 orders is not a bug anyone recovers from
    * quietly.
    */
-  private async evaluate(client: PoolClient): Promise<readonly PendingOrder[]> {
+  private async evaluate(client: PoolClient, limit?: number): Promise<readonly PendingOrder[]> {
     const { rows: candidates } = await client.query<CandidateRow>(
       `SELECT o.order_id, o.order_number, o.current_status, o.final_value::text,
               s.attribution, s.employee_credit_percent::text, e.full_name AS rep_name
@@ -159,7 +192,8 @@ export class PendingCreditService {
           AND NOT EXISTS (
             SELECT 1 FROM attribution_ledger l WHERE l.order_id = o.order_id
           )
-        ORDER BY o.order_date, o.order_number`,
+        ORDER BY o.order_date, o.order_number
+        ${limit !== undefined ? 'LIMIT ' + Number(limit) : ''}`,
     );
     if (candidates.length === 0) return [];
 

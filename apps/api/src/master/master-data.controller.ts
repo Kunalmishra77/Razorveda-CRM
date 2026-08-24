@@ -78,12 +78,18 @@ export class MasterDataController {
   /** Orders booked against an unconfirmed price, and why each is still waiting. */
   @Get('credit/pending')
   async pendingCreditList(@Req() request: AuthedRequest) {
-    const orders = await this.pendingCredit.list(request.session!);
+    // `waiting` comes from a COUNT, not from the length of what is returned.
+    // The list is a page; the number is the truth (D-231).
+    const [{ waiting }, orders] = await Promise.all([
+      this.pendingCredit.summary(request.session!),
+      this.pendingCredit.list(request.session!),
+    ]);
     return {
       ok: true,
       orders,
-      waiting: orders.length,
-      blocked: orders.filter((o) => o.blockedBy !== null).length,
+      waiting,
+      shown: orders.length,
+      blockedInPage: orders.filter((o) => o.blockedBy !== null).length,
     };
   }
 

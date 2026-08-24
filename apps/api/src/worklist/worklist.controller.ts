@@ -91,6 +91,23 @@ export class WorklistController {
                 l.assigned_at, l.valid_till, l.is_converted, l.closed_at,
                 l.timing_provisional,
                 c.full_name, c.primary_phone, c.state, c.lifetime_orders,
+                c.lifetime_value,
+                -- WHAT SHE NEEDS ON THE CALL, not what fits in a table.
+                --
+                -- The first version of this screen showed source, tries and
+                -- "last outcome" and every one of them read as an em-dash. A rep
+                -- picking up the phone needs the last thing this customer
+                -- actually SAID and when - "call after 6, busy" is the whole
+                -- difference between a good second call and an annoying one.
+                --
+                -- Scalar subqueries, not a LEFT JOIN: the page is capped at 50
+                -- rows and a join here fanned out one row per activity (D-232).
+                (SELECT a.remark_raw FROM activity a
+                  WHERE a.lead_id = l.lead_id AND a.remark_raw IS NOT NULL
+                  ORDER BY a.occurred_at DESC LIMIT 1)          AS last_remark,
+                (SELECT a.occurred_at FROM activity a
+                  WHERE a.lead_id = l.lead_id
+                  ORDER BY a.occurred_at DESC LIMIT 1)          AS last_contact_at,
                 s.display_name AS source, l.product_interest, l.contact_attempts,
                 d.label AS disposition
            FROM page
@@ -181,6 +198,9 @@ export class WorklistController {
             // worse - but she is told the timing is an estimate, so "you are early"
             // from the customer is information rather than an embarrassment.
             timingProvisional: row.timing_provisional,
+            lifetimeValue: row.lifetime_value,
+            lastRemark: row.last_remark,
+            lastContactAt: row.last_contact_at,
           };
         }),
       };
@@ -321,6 +341,9 @@ export class WorklistController {
 interface WorklistRow {
   lead_id: string;
   timing_provisional: boolean;
+  lifetime_value: string | null;
+  last_remark: string | null;
+  last_contact_at: string | Date | null;
   next_followup_at: string | Date | null;
   repeat_due_date: string | Date | null;
   assigned_at: string | Date | null;

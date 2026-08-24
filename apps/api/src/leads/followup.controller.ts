@@ -22,13 +22,27 @@ export class FollowupController {
   @Get('untouched')
   async untouched(@Query('asOf') asOf: string | undefined, @Req() request: AuthedRequest) {
     const at = parseAsOf(asOf);
-    const leads = await this.followups.findUntouched(request.session!, at, UNTOUCHED_ALERT_HOURS);
+    // CAPPED IN SQL, and the count comes from its own cheap query.
+    //
+    // This returned all 9,491 matching leads — every customer name and full phone
+    // number among them — so a screen could show one number. Same defect as D-231.
+    // Slicing in JavaScript would have fixed the payload and none of the cost:
+    // the expensive part is the join into `customer`, which runs the isolation
+    // policy per row (D-234). The LIMIT moves into the query, and the total is a
+    // COUNT with no joins at all.
+    const PAGE = 100;
+    const [count, leads] = await Promise.all([
+      this.followups.countUntouched(request.session!, at, UNTOUCHED_ALERT_HOURS),
+      this.followups.findUntouched(request.session!, at, UNTOUCHED_ALERT_HOURS, PAGE),
+    ]);
+
     return {
       ok: true,
       asOf: at,
       thresholdHours: UNTOUCHED_ALERT_HOURS,
       recallAtHours: UNTOUCHED_RECALL_HOURS,
-      count: leads.length,
+      count,
+      shown: leads.length,
       leads,
     };
   }

@@ -29,7 +29,8 @@
     "db:seed:dev": "npm run seed:dev -w @razorveda/db --",
     "db:restore-drill": "tsx packages/db/src/restore-drill.ts",
     "db:seed:volume": "tsx packages/db/src/seed-volume.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "db:seed:demo": "npm run seed:demo -w @razorveda/db --"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

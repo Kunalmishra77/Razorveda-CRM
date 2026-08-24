@@ -36,6 +36,9 @@ import { s, T } from '../../lib/ui';
  */
 
 const NAV = [
+  // First, because it is the only screen that tells you whether anything is
+  // wrong. Every other entry is a place you have to already know to look.
+  { href: '/today', label: 'Today', hint: 'What is waiting on you' },
   { href: '/upload', label: 'Upload Centre', hint: 'Nine channels, batch history' },
   { href: '/assignment', label: 'Lead Assignment', hint: 'The unassigned pool' },
   { href: '/reports', label: 'Reports & MIS', hint: 'Daily, weekly, month close' },

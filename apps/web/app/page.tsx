@@ -14,7 +14,7 @@ export default function Home() {
   useEffect(() => {
     api
       .get<{ session: Session }>('/auth/me')
-      .then((r) => router.replace(r.session.role === 'EMPLOYEE' ? '/worklist' : '/upload'))
+      .then((r) => router.replace(r.session.role === 'EMPLOYEE' ? '/worklist' : '/today'))
       .catch(() => router.replace('/login'));
   }, [router]);
   return <main style={s.page}><p style={s.empty}>Taking you to your work…</p></main>;
