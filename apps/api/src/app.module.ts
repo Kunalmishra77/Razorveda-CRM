@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import pg from 'pg';
 import { HealthController } from './health.controller.js';
 import { MetricsController } from './metrics.controller.js';
@@ -27,6 +28,7 @@ import { ExportService } from './reports/export.service.js';
 import { ClosePackService } from './reports/close-pack.service.js';
 import { ReportsController } from './reports/reports.controller.js';
 import { DigestsService } from './notifications/digests.service.js';
+import { SchedulerService } from './jobs/scheduler.service.js';
 import { DigestsController } from './notifications/digests.controller.js';
 import { SecurityConsoleService } from './security/console.service.js';
 import { OffboardingService } from './security/offboarding.service.js';
@@ -47,6 +49,10 @@ import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
  * this whole codebase is built around.
  */
 @Module({
+  // Starts the cron timers. Without forRoot() the @Cron decorators are inert -
+  // which is a quieter version of the exact defect SchedulerService exists to fix,
+  // so there is a test asserting the jobs are registered.
+  imports: [ScheduleModule.forRoot()],
   controllers: [
     HealthController,
     MetricsController,
@@ -95,6 +101,16 @@ import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
     { provide: ReportsService, useFactory: (pool: pg.Pool) => new ReportsService(pool), inject: [pg.Pool] },
     { provide: ExportService, useFactory: (pool: pg.Pool) => new ExportService(pool), inject: [pg.Pool] },
     { provide: DigestsService, useFactory: (pool: pg.Pool) => new DigestsService(pool), inject: [pg.Pool] },
+    {
+      provide: SchedulerService,
+      useFactory: (
+        pool: pg.Pool,
+        followups: FollowupService,
+        repeats: RepeatService,
+        digests: DigestsService,
+      ) => new SchedulerService(pool, followups, repeats, digests),
+      inject: [pg.Pool, FollowupService, RepeatService, DigestsService],
+    },
     { provide: SecurityConsoleService, useFactory: (pool: pg.Pool) => new SecurityConsoleService(pool), inject: [pg.Pool] },
     { provide: OffboardingService, useFactory: (pool: pg.Pool) => new OffboardingService(pool), inject: [pg.Pool] },
     { provide: MasterDataService, useFactory: (pool: pg.Pool) => new MasterDataService(pool), inject: [pg.Pool] },

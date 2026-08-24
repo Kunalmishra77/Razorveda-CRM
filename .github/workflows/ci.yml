@@ -35,6 +35,15 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      # apps/web was typechecked but never BUILT. tsc does not run the bundler,
+      # so a broken import path, an invalid route export, or a client component
+      # importing server-only code all typecheck cleanly and fail at build - which
+      # would first be discovered on the VPS, during a deploy.
+      #
+      # 13 routes, no database needed: nothing fetches at build time.
+      - name: Web production build
+        run: npm run build -w @razorveda/web
+
   dependencies:
     runs-on: ubuntu-latest
     steps:
@@ -123,6 +132,12 @@ jobs:
       DATABASE_URL_APP: postgresql://razorveda_app:localdev@localhost:5433/razorveda
       JWT_SECRET: ci-only-secret-value-at-least-32-characters-long
       RATE_LIMIT_DISABLED: '1'
+      # The scheduler is ON by default, on purpose. It must be OFF here: this job
+      # starts a real API alongside a suite that includes an untouched-recall test,
+      # and a genuine 72h recall firing underneath it would return leads mid-test
+      # and present as an intermittently failing security test. A flaky security
+      # test is worse than a slow one - it gets re-run until it passes.
+      SCHEDULER_DISABLED: '1'
 
     steps:
       - uses: actions/checkout@v4

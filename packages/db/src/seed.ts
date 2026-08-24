@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { hash } from '@node-rs/argon2';
-import { ARGON2ID_PARAMS } from '@razorveda/shared';
+import { randomBytes } from 'node:crypto';
+import { ARGON2ID_PARAMS, SYSTEM_ACTOR_EMAIL } from '@razorveda/shared';
 import pg from 'pg';
 import { asBool, asNumber, asPipeList, orNull, parseCsv, type CsvRow } from './csv.js';
 import { WEEKDAY, generateYear, type Weekday } from './calendar.js';
@@ -252,6 +253,31 @@ async function main(): Promise<void> {
         ],
       );
     }
+
+    // ── the identity scheduled jobs act as ───────────────────────────────
+    // Created HERE and not from employees.csv on purpose: a row in that file
+    // becomes an employee, and an employee shows up in rosters, targets, scores
+    // and incentive runs. This must be an app_user and nothing else.
+    //
+    // LOCKED FOREVER, and the password is a random value this process throws away
+    // without printing it. Even unlocking the account by mistake would not create
+    // a usable login. The only thing it can do is be the actor on rows written by
+    // the scheduler, which is the entire point (see SYSTEM_ACTOR_EMAIL).
+    const systemHash = await hash(randomBytes(48).toString('hex'), ARGON2ID_PARAMS);
+    await client.query(
+      `INSERT INTO app_user (email, password_hash, role, is_locked, locked_reason)
+       VALUES ($1, $2, 'ADMIN', true, $3)
+       ON CONFLICT (email) DO UPDATE SET
+         role = 'ADMIN', is_locked = true, locked_reason = EXCLUDED.locked_reason`,
+      [
+        SYSTEM_ACTOR_EMAIL,
+        systemHash,
+        'Not a login. This is the actor scheduled jobs write as. Never unlock it: '
+          + 'it has no known password and no employee record.',
+      ],
+    );
+    console.log(`   system actor ${SYSTEM_ACTOR_EMAIL} -> ADMIN, locked, no employee row`);
+
 
     // ── seasonality index ────────────────────────────────────────────────
     // Seeded 1.0 for all twelve months, provisional. Cannot be fitted on five

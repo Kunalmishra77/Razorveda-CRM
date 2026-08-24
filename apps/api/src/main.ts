@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import { ExpressAdapter } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import express from 'express';
 import { AppModule } from './app.module.js';
@@ -10,7 +11,27 @@ import { MAX_UPLOAD_BYTES } from './security/upload-guard.js';
 const PORT = Number(process.env['API_PORT'] ?? 3001);
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  /**
+   * THE ADAPTER IS PASSED EXPLICITLY, and it has to be.
+   *
+   * `NestFactory.create(AppModule)` DISCOVERS the HTTP driver: @nestjs/core does a
+   * bare `require('@nestjs/platform-express')`, which resolves from core's own
+   * location. In an npm workspace that is the root `node_modules`, and npm hoists
+   * core there while leaving platform-express under `apps/api/node_modules` — so
+   * core cannot see it, and the process dies with "No driver (HTTP) has been
+   * selected. ...please ensure to install @nestjs/platform-express", about a
+   * package that is installed and importable.
+   *
+   * It appeared out of nowhere when @nestjs/schedule was added, because that
+   * install reshuffled the hoist layout. A clean `npm ci` reproduced it exactly,
+   * so it was not a stale-tree artifact and CI would have hit it too.
+   *
+   * Importing the adapter here makes resolution happen from apps/api, where it is
+   * plainly visible, and removes the dependency on npm's hoisting decisions
+   * entirely. Explicit beats discovered for something the process cannot start
+   * without.
+   */
+  const app = await NestFactory.create(AppModule, new ExpressAdapter());
   const production = process.env['NODE_ENV'] === 'production';
   const webOrigin = process.env['WEB_ORIGIN'] ?? 'http://localhost:3000';
 

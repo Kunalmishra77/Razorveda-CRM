@@ -45,5 +45,27 @@ export const PII_COPY_VELOCITY_WINDOW_SEC = 90;
 export const UNTOUCHED_ALERT_HOURS = 48;
 export const UNTOUCHED_RECALL_HOURS = 72;
 
+/**
+ * The identity scheduled jobs act as.
+ *
+ * WHY IT EXISTS. The 72h pool return is the one automatic movement in this system
+ * (CLAUDE.md rule 6), and it writes to lead_assignment and audit_log. Those rows
+ * need an actor. The alternatives were both worse: running the job as the migrator
+ * bypasses RLS entirely, and running it as one of the three real admins puts
+ * Sunita's name on work she did not do — which corrupts the audit trail in the
+ * quiet way that matters, since the trail exists precisely to answer "who moved
+ * this lead".
+ *
+ * WHY IT IS SAFE. Role ADMIN, so is_admin() accepts it and the job runs THROUGH
+ * the policies rather than around them. Permanently is_locked, so it can never
+ * authenticate — there is no login path for it, and no password anyone knows: the
+ * seed hashes a random value it then discards. And it has NO employee row, so it
+ * cannot appear in a roster, hold a lead, carry a target, or earn incentive.
+ *
+ * Defined here because the seed creates it and the scheduler looks it up. Two
+ * string literals in two packages is exactly the drift this file exists to stop.
+ */
+export const SYSTEM_ACTOR_EMAIL = 'system@razorveda.local';
+
 export type AuditLog = z.infer<typeof auditLogSchema>;
 export type PiiAccessLog = z.infer<typeof piiAccessLogSchema>;

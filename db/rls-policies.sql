@@ -501,3 +501,63 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 --   SELECT count(*) FROM lead;                  -- only that rep's leads
 --   SELECT count(*) FROM customer_identifier;   -- only their customers' phones
 --   RESET ROLE;
+
+-- ─── maintenance: refreshing the certified materialised views ─────────────
+--
+-- The six matviews are owned by the migrator and REVOKEd from app_role, which is
+-- what stops a rep reading a colleague's KPIs straight out of the view. But
+-- REFRESH MATERIALIZED VIEW requires OWNERSHIP, and app_role owns nothing by
+-- design (D-21) — so the API, which connects as razorveda_app, cannot refresh
+-- them at all.
+--
+-- The alternative was giving the API process migrator credentials. That hands a
+-- web-facing service DDL rights over the whole schema in order to run a
+-- maintenance statement, which is a bad trade at any scale.
+--
+-- So: one narrow SECURITY DEFINER doorway, the same shape as auth_lookup. It can
+-- refresh the certified views and do nothing else. It takes no arguments, so there
+-- is no input to inject; the view names come from pg_class.
+--
+-- search_path is pinned. A SECURITY DEFINER function that resolves objects through
+-- the CALLER's search_path can be pointed at an attacker's table of the same name.
+CREATE OR REPLACE FUNCTION refresh_certified_views()
+RETURNS TABLE (view_name text, ran_concurrently boolean, ms integer)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v          record;
+  started    timestamptz;
+  is_unique  boolean;
+BEGIN
+  FOR v IN
+    SELECT c.oid, c.relname
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE c.relkind = 'm' AND n.nspname = 'public'
+     ORDER BY c.relname
+  LOOP
+    -- CONCURRENTLY needs a unique index. Without one the refresh takes an ACCESS
+    -- EXCLUSIVE lock and blocks every report reading the view, so prefer it
+    -- wherever it is available rather than assuming it always is.
+    SELECT EXISTS (SELECT 1 FROM pg_index i WHERE i.indrelid = v.oid AND i.indisunique)
+      INTO is_unique;
+
+    started := clock_timestamp();
+    IF is_unique THEN
+      EXECUTE format('REFRESH MATERIALIZED VIEW CONCURRENTLY %I', v.relname);
+    ELSE
+      EXECUTE format('REFRESH MATERIALIZED VIEW %I', v.relname);
+    END IF;
+
+    view_name        := v.relname;
+    ran_concurrently := is_unique;
+    ms               := (EXTRACT(epoch FROM (clock_timestamp() - started)) * 1000)::integer;
+    RETURN NEXT;
+  END LOOP;
+END $$;
+
+-- EXECUTE only. app_role still cannot SELECT the matviews directly, still owns
+-- nothing, and now has exactly one thing it may do to them.
+GRANT EXECUTE ON FUNCTION refresh_certified_views() TO app_role;

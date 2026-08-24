@@ -29,6 +29,22 @@ const schemaPath = fileURLToPath(new URL('../../../db/schema.sql', import.meta.u
 const schema = readFileSync(schemaPath, 'utf8');
 const lines = schema.split('\n');
 
+/**
+ * All three files migrate applies, in order, inside ONE transaction. They share a
+ * single object namespace, so duplicate-name checks have to look at them together.
+ */
+const APPLIED_FILES: Record<string, string> = {
+  'db/schema.sql': schema,
+  'db/rls-policies.sql': readFileSync(
+    fileURLToPath(new URL('../../../db/rls-policies.sql', import.meta.url)),
+    'utf8',
+  ),
+  'packages/metrics/sql/views.sql': readFileSync(
+    fileURLToPath(new URL('../../metrics/sql/views.sql', import.meta.url)),
+    'utf8',
+  ),
+};
+
 interface Ref {
   readonly line: number;
   readonly kind: string;
@@ -121,6 +137,76 @@ describe('db/schema.sql applies top to bottom', () => {
 
     const missing = [...secured].filter((t) => !created.has(t));
     expect(missing, `rls-policies.sql secures tables that db/schema.sql never creates: ${missing.join(', ')}`).toEqual(
+      [],
+    );
+  });
+});
+
+describe('no SQL object is defined twice', () => {
+  /**
+   * A CREATE INDEX whose name already exists is a hard error, and migrate applies
+   * all three files in one transaction — so a duplicate anywhere fails the entire
+   * bootstrap.
+   *
+   * THIS CHECK EXISTS BECAUSE IT CAUGHT A REAL ONE, minutes after being needed.
+   * Adding a unique index to mv_rto_analysis produced a SECOND definition of
+   * `ux_mv_rto_analysis`: the existing one spanned two lines and the grep used to
+   * look for it only matched single-line definitions, so it reported the index as
+   * absent. It would have passed every other test here, worked locally against a
+   * database that already had the index, and failed only on a fresh build.
+   *
+   * The lesson is the same one as the forward references: a check that reads SQL
+   * line-by-line is blind to anything wrapped across lines.
+   */
+  it('no index name is created twice across the three applied files', () => {
+    const seen = new Map<string, string[]>();
+    for (const [file, sql] of Object.entries(APPLIED_FILES)) {
+      // Match only the NAME. Multi-line definitions are normal, so the ON clause
+      // is deliberately not part of the pattern — requiring it is what made the
+      // original grep miss a definition that was right there.
+      for (const m of sql.matchAll(/CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF NOT EXISTS\s+)?(\w+)/gi)) {
+        const name = m[1]!;
+        seen.set(name, [...(seen.get(name) ?? []), file]);
+      }
+    }
+
+    expect(seen.size, 'no CREATE INDEX found at all — the scan is broken').toBeGreaterThan(20);
+
+    const duplicated = [...seen.entries()]
+      .filter(([, where]) => where.length > 1)
+      .map(([name, where]) => `  ${name} defined ${where.length}x (${where.join(', ')})`);
+
+    expect(
+      duplicated.join('\n'),
+      'Duplicate index names. migrate applies all three files in one transaction, so this ' +
+        'fails the whole bootstrap on any database that does not already have the index.',
+    ).toBe('');
+  });
+
+  it('no materialised view is created twice', () => {
+    const names = [
+      ...APPLIED_FILES['packages/metrics/sql/views.sql']!.matchAll(
+        /CREATE\s+MATERIALIZED\s+VIEW\s+(?:IF NOT EXISTS\s+)?(\w+)/gi,
+      ),
+    ].map((m) => m[1]!);
+
+    expect(names.length, 'no matviews found — the scan is broken').toBeGreaterThan(3);
+    expect(new Set(names).size, `duplicate matview among: ${names.join(', ')}`).toBe(names.length);
+  });
+
+  it('every matview has a unique index, so every refresh can be CONCURRENT', () => {
+    // A matview without one can only be refreshed with an ACCESS EXCLUSIVE lock,
+    // which blocks every report reading it. Worth knowing at edit time rather than
+    // from a production stall, and it is the reason refresh_certified_views()
+    // reports which views it could not refresh concurrently.
+    const views = APPLIED_FILES['packages/metrics/sql/views.sql']!;
+    const matviews = [...views.matchAll(/CREATE\s+MATERIALIZED\s+VIEW\s+(\w+)/gi)].map((m) => m[1]!);
+    const indexed = new Set(
+      [...views.matchAll(/CREATE\s+UNIQUE\s+INDEX\s+\w+\s+ON\s+(\w+)/gis)].map((m) => m[1]!),
+    );
+
+    const unindexed = matviews.filter((v) => !indexed.has(v));
+    expect(unindexed, `matviews with no unique index (refresh will block readers): ${unindexed.join(', ')}`).toEqual(
       [],
     );
   });

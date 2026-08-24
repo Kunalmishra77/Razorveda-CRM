@@ -252,8 +252,18 @@ SELECT e.event_at::date                     AS rto_date,
  WHERE e.to_status IN ('RTO','RETURNED')
  GROUP BY 1, 2, 3, 4;
 
+-- NULLS NOT DISTINCT, and this index is what makes REFRESH CONCURRENTLY possible.
+--
+-- ship_state and payment_mode are both nullable. Under Postgres's default
+-- (NULLS DISTINCT) two rows differing only by a NULL count as different keys, so
+-- the index builds happily while NOT actually being unique over the data - and
+-- the concurrent refresh then has no stable key to diff on and can fail at
+-- refresh time rather than at create time.
+--
+-- The alternative, coalescing those columns inside the view, would CHANGE THE
+-- METRIC to buy an indexing convenience. Not a trade worth making.
 CREATE UNIQUE INDEX ux_mv_rto_analysis
-  ON mv_rto_analysis (rto_date, ship_state, payment_mode, booked_by_employee_id);
+  ON mv_rto_analysis (rto_date, ship_state, payment_mode, booked_by_employee_id) NULLS NOT DISTINCT;
 
 -- ---------------------------------------------------------------------------
 -- mv_geography_performance — where the business actually works.
