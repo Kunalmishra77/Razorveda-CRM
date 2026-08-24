@@ -31,6 +31,14 @@ export interface ActivityInput {
   readonly followupAt: string | null;
   /** Self-reported: the rep says whether the call connected (D-03). */
   readonly connected: boolean | null;
+  /**
+   * Hot / Warm / Cold, optional on every call.
+   *
+   * Null means "she did not touch the control", not "cold" — the service
+   * coalesces, so logging a no-answer never downgrades a lead she rated Hot
+   * yesterday.
+   */
+  readonly temperature?: 'HOT' | 'WARM' | 'COLD' | null | undefined;
 }
 
 export type ActivityValidation =

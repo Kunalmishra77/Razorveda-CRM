@@ -88,7 +88,7 @@ export default function HowAmIDoing() {
 
   return (
     <main style={s.page}>
-      <h1 style={s.h1}>How am I doing</h1>
+      <h1 style={s.h1}>Performance</h1>
       <p style={s.sub}>Your own numbers. Nobody else can see this page as you, and you cannot see theirs.</p>
 
       {/* This month, against target — the number she is measured on. */}
@@ -158,6 +158,9 @@ export default function HowAmIDoing() {
         </p>
       </section>
 
+      {/* Day by day, week by week, month by month — the client's own words. */}
+      <Breakdown />
+
       {/* The honest gap, stated rather than hidden behind an empty panel. */}
       <section style={s.card}>
         <div style={s.cardHead}><span>Your incentive</span></div>
@@ -175,6 +178,128 @@ export default function HowAmIDoing() {
         </p>
       </section>
     </main>
+  );
+}
+
+/* ── the work history, at three zoom levels ─────────────────────────────────
+ *
+ * One endpoint, one grain parameter. A rep asking "how was last week" and an
+ * admin asking "how was July" are the same question at different resolutions,
+ * and giving them separate code paths is how two screens end up disagreeing
+ * about what a call was.
+ *
+ * Empty periods are rendered as zeros rather than dropped. A missing Tuesday in
+ * a list of days reads as "we lost your Tuesday"; a Tuesday showing 0 reads as
+ * "you made no calls", which is the true and much less alarming claim.
+ */
+
+interface Bucket {
+  bucket: string; calls: string; connected: string; leads_worked: string;
+  assigned: string; orders: string; delivered: string; delivered_value: string;
+}
+
+const GRAINS = [
+  { key: 'day', label: 'Day by day', note: 'last 30 days' },
+  { key: 'week', label: 'Week by week', note: 'last 12 weeks' },
+  { key: 'month', label: 'Month by month', note: 'last 12 months' },
+] as const;
+
+function Breakdown() {
+  const [grain, setGrain] = useState<'day' | 'week' | 'month'>('day');
+  const [rows, setRows] = useState<Bucket[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    setRows(null);
+    setErr(null);
+    api.get<{ rows: Bucket[] }>(`/me/performance?grain=${grain}`)
+      .then((r) => { if (live) setRows(r.rows); })
+      .catch((e) => { if (live) setErr(e instanceof ApiError ? e.message : 'Could not load your history.'); });
+    return () => { live = false; };
+  }, [grain]);
+
+  const meta = GRAINS.find((g) => g.key === grain)!;
+  const label = (b: string): string => {
+    const d = new Date(`${b}T00:00:00`);
+    if (grain === 'month') return d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    if (grain === 'week') return `Week of ${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`;
+    return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+  };
+
+  return (
+    <section style={{ ...s.card, marginBottom: 14 }}>
+      <div style={s.cardHead}>
+        <span>Your work history</span>
+        <span style={{ ...s.sub, margin: 0, fontSize: 12 }}>{meta.note}</span>
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '10px 0 4px' }}>
+        {GRAINS.map((g) => {
+          const on = g.key === grain;
+          return (
+            <button
+              key={g.key} type="button" onClick={() => setGrain(g.key)} aria-pressed={on}
+              style={{
+                font: '500 13px/1 inherit', padding: '8px 12px', borderRadius: 4, cursor: 'pointer',
+                border: `1px solid ${on ? T.text : T.line}`,
+                background: on ? T.text : T.card, color: on ? '#fff' : T.text,
+              }}
+            >
+              {g.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {err && <div role="alert" style={s.notice('bad')}>{err}</div>}
+      {!rows && !err && <p style={s.empty}>Loading your history…</p>}
+
+      {rows && (
+        <div style={{ overflowX: 'auto', marginTop: 8 }}>
+          <table style={s.table}>
+            <thead>
+              <tr>
+                <th style={s.th}>{grain === 'day' ? 'Day' : grain === 'week' ? 'Week' : 'Month'}</th>
+                <th style={{ ...s.th, textAlign: 'right' }}>Given to you</th>
+                <th style={{ ...s.th, textAlign: 'right' }}>Calls</th>
+                <th style={{ ...s.th, textAlign: 'right' }}>Answered</th>
+                <th style={{ ...s.th, textAlign: 'right' }}>Leads worked</th>
+                <th style={{ ...s.th, textAlign: 'right' }}>Orders</th>
+                <th style={{ ...s.th, textAlign: 'right' }}>Delivered</th>
+                <th style={{ ...s.th, textAlign: 'right' }}>Delivered value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const quiet = Number(r.calls) === 0 && Number(r.orders) === 0 && Number(r.assigned) === 0;
+                return (
+                  <tr key={r.bucket} style={quiet ? { color: T.faint } : undefined}>
+                    <td style={s.td}>{label(r.bucket)}</td>
+                    <td style={{ ...s.td, ...s.mono, textAlign: 'right' }}>{r.assigned}</td>
+                    <td style={{ ...s.td, ...s.mono, textAlign: 'right' }}>{r.calls}</td>
+                    <td style={{ ...s.td, ...s.mono, textAlign: 'right' }}>{r.connected}</td>
+                    <td style={{ ...s.td, ...s.mono, textAlign: 'right' }}>{r.leads_worked}</td>
+                    <td style={{ ...s.td, ...s.mono, textAlign: 'right' }}>{r.orders}</td>
+                    <td style={{ ...s.td, ...s.mono, textAlign: 'right', color: Number(r.delivered) > 0 ? T.vine : undefined }}>
+                      {r.delivered}
+                    </td>
+                    <td style={{ ...s.td, ...s.mono, textAlign: 'right' }}>
+                      {Number(r.delivered_value) > 0 ? `₹${fmt(r.delivered_value)}` : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <p style={{ ...s.sub, margin: '10px 0 0', fontSize: 12.5 }}>
+        Delivered counts orders that actually arrived. A row can show more delivered than booked:
+        an order booked last month and delivered this one lands in this month.
+      </p>
+    </section>
   );
 }
 

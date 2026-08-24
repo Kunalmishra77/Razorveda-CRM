@@ -24,6 +24,14 @@ const activitySchema = z.object({
   connected: z.boolean().optional(),
   remarkRaw: z.string().max(4000).optional(),
   followupAt: z.string().datetime().optional(),
+  /**
+   * Hot / Warm / Cold, set by the rep on the call.
+   *
+   * The client's own Skinwise sheet carries "Hot" — in the `Alt No` column, because
+   * there was nowhere else to put it. It is a real thing the team tracks, so it
+   * gets a real field rather than a phone column.
+   */
+  temperature: z.enum(['HOT', 'WARM', 'COLD']).optional(),
 });
 
 @Controller()
@@ -214,10 +222,15 @@ export class WorklistController {
       const { rows } = await client.query(
         `SELECT l.lead_id, l.contact_attempts, l.ever_connected, l.next_followup_at,
                 l.valid_till, l.closed_at, l.is_converted,
+                -- The rep's own read on this lead. She sets it as she calls, so the
+                -- workspace has to show what it is now before offering to change it.
+                l.temperature::text AS temperature, l.assigned_at,
                 c.customer_id, c.full_name, c.primary_phone, c.city, c.state, c.pincode,
                 c.lifetime_orders, c.lifetime_value, c.stage, c.rto_count, c.do_not_call,
                 s.display_name AS source, l.product_interest,
-                d.label AS current_disposition
+                d.label AS current_disposition,
+                (SELECT max(a.occurred_at) FROM activity a
+                  WHERE a.lead_id = l.lead_id) AS last_contact_at
            FROM lead l
            JOIN customer c ON c.customer_id = l.customer_id
            JOIN lead_source s ON s.source_id = l.source_id
@@ -231,12 +244,18 @@ export class WorklistController {
       // 403 confirms the record exists (docs/05 test 1).
       if (!lead) throw new NotFoundException('That lead was not found.');
 
+      // The client asked for the complete history on the lead, so the page shows
+      // it numbered — attempt 1 at the bottom, the latest at the top. 200 is a
+      // ceiling, not a page: no lead in the imported data comes near it, and a
+      // lead that did would be a data problem worth seeing rather than hiding.
       const { rows: history } = await client.query(
-        `SELECT a.occurred_at, a.type, a.connected, a.remark_raw, d.label AS disposition
+        `SELECT a.occurred_at, a.type, a.connected, a.remark_raw, d.label AS disposition,
+                d.category::text AS category, e.full_name AS by_employee
            FROM activity a
            LEFT JOIN disposition d ON d.disposition_id = a.disposition_id
+           LEFT JOIN employee e ON e.employee_id = a.employee_id
           WHERE a.lead_id = $1
-          ORDER BY a.occurred_at DESC LIMIT 20`,
+          ORDER BY a.occurred_at DESC LIMIT 200`,
         [leadId],
       );
 
@@ -285,6 +304,7 @@ export class WorklistController {
         remarkRaw: parsed.data.remarkRaw ?? null,
         followupAt: parsed.data.followupAt ?? null,
         connected: parsed.data.connected ?? null,
+        temperature: parsed.data.temperature ?? null,
       });
       return { ok: true, ...result };
     } catch (e) {

@@ -23,3 +23,12 @@ apps/web/next-dev*.log
 # failing run; CI uploads them as an artifact rather than anyone committing them.
 /playwright-report/
 /test-results/
+
+# The client's real workbooks. Live customer names, mobile numbers and addresses
+# for ~2,800 people. `npm run db:import:client` reads them from here into a local
+# database; nothing about them belongs in version control, and a private repo is
+# not the same thing as a safe place for it.
+/test-data/
+
+# Playwright MCP scratch output from local UI checks.
+/.playwright-mcp/

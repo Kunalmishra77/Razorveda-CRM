@@ -125,14 +125,19 @@ export class ActivityService {
       // `lead` is mutable state derived from the append-only activity log, so it
       // can be rebuilt from history if it ever disagrees.
       await client.query(
+        // `temperature` is coalesced, not overwritten: a rep who logs a
+        // not-connected attempt without touching the Hot/Warm/Cold control must
+        // not silently downgrade a lead she marked Hot yesterday.
         `UPDATE lead SET contact_attempts = $2, ever_connected = $3, first_contact_at = $4,
                          first_connected_at = $5, last_contact_at = $6, next_followup_at = $7,
-                         current_disposition_id = $8, closed_at = $9, updated_at = now()
+                         current_disposition_id = $8, closed_at = $9,
+                         temperature = coalesce($10::lead_temperature, temperature),
+                         updated_at = now()
           WHERE lead_id = $1`,
         [
           input.leadId, next.contactAttempts, next.everConnected, next.firstContactAt,
           next.firstConnectedAt, next.lastContactAt, next.nextFollowupAt,
-          next.currentDispositionId, next.closedAt,
+          next.currentDispositionId, next.closedAt, input.temperature ?? null,
         ],
       );
 

@@ -68,7 +68,7 @@ export default function LoginPage() {
       // Admins land on Today rather than the Upload Centre: opening the product
       // on a file picker answers a question nobody asked. Today answers the one
       // they did — is anything wrong, and what do I do about it.
-      router.push(result.user?.role === 'EMPLOYEE' ? '/worklist' : '/today');
+      router.push(result.user?.role === 'EMPLOYEE' ? '/dashboard' : '/today');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Something unexpected happened.');
     } finally {

@@ -13,6 +13,7 @@ import { UploadService } from './ingestion/upload.service.js';
 import { CommitService } from './ingestion/commit.service.js';
 import { AssignmentController } from './assignment/assignment.controller.js';
 import { AssignmentService } from './assignment/assignment.service.js';
+import { MeController } from './worklist/me.controller.js';
 import { WorklistController } from './worklist/worklist.controller.js';
 import { OrdersController } from './orders/orders.controller.js';
 import { StatusService } from './orders/status.service.js';
@@ -63,6 +64,7 @@ import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
     IngestionController,
     AssignmentController,
     WorklistController,
+    MeController,
     OrdersController,
     RepeatController,
     FollowupController,

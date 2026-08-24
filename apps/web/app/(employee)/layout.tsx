@@ -105,10 +105,12 @@ const brand: React.CSSProperties = {
 
 /** Named for what she calls them, not for what the tables are called. */
 const REP_NAV = [
+  { href: '/dashboard', label: 'Dashboard' },
   { href: '/worklist', label: 'My day' },
+  { href: '/assigned-leads', label: 'Assigned leads' },
   { href: '/my-customers', label: 'My customers' },
   { href: '/my-orders', label: 'My orders' },
-  { href: '/how-am-i-doing', label: 'How am I doing' },
+  { href: '/how-am-i-doing', label: 'Performance' },
 ] as const;
 
 const repLink = (active: boolean): React.CSSProperties => ({

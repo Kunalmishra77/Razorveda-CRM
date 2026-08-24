@@ -38,7 +38,7 @@ const realAlerts = (page: import('@playwright/test').Page) =>
   page.locator('[role="alert"]').filter({ hasText: /\S/ });
 
 test.describe('a rep signing in', () => {
-  test('reaches her worklist and sees her own leads', async ({ page }) => {
+  test('lands on her dashboard, and can reach her worklist from it', async ({ page }) => {
     await page.goto('/login');
 
     // Fail loudly if the form is not the form. Without this, a renamed input makes
@@ -49,14 +49,22 @@ test.describe('a rep signing in', () => {
     await page.fill('#password', REP.password);
     await page.click('button[type="submit"]');
 
-    // The redirect is role-dependent: EMPLOYEE -> /worklist, everyone else
-    // -> /upload. A rep landing on /upload would meet a 401 section and read it
-    // as being locked out, so the destination is part of the behaviour.
-    await expect(page).toHaveURL(/\/worklist/, { timeout: 15_000 });
+    // The redirect is role-dependent: EMPLOYEE -> /dashboard, everyone else
+    // -> /today. A rep landing on an admin screen would meet a 401 section and
+    // read it as being locked out, so the destination is part of the behaviour.
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
 
     // And it actually rendered, rather than reaching the route and erroring. An
     // error state on this page is the difference between "she can work" and "she
     // cannot", and it would still be a 200.
+    await expect(realAlerts(page), 'the dashboard rendered an error for a rep who just signed in').toHaveCount(0);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+
+    // The worklist is one click away rather than the landing page, and it still
+    // has to render. It is where she spends the day; an error here is the
+    // difference between "she can work" and "she cannot", and it would still be
+    // a 200.
+    await page.goto('/worklist');
     await expect(realAlerts(page), 'the worklist rendered an error for a rep who just signed in').toHaveCount(0);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   });
@@ -93,10 +101,10 @@ test.describe('a rep signing in', () => {
     await page.fill('#email', REP.email);
     await page.fill('#password', REP.password);
     await page.click('button[type="submit"]');
-    await expect(page).toHaveURL(/\/worklist/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
 
     await page.reload();
-    await expect(page, 'the session did not survive a reload').toHaveURL(/\/worklist/);
+    await expect(page, 'the session did not survive a reload').toHaveURL(/\/dashboard/);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   });
 });
@@ -111,7 +119,7 @@ test.describe('what a rep must not reach', () => {
     await page.fill('#email', REP.email);
     await page.fill('#password', REP.password);
     await page.click('button[type="submit"]');
-    await expect(page).toHaveURL(/\/worklist/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
 
     await page.goto('/security');
 

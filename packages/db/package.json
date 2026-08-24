@@ -19,7 +19,8 @@
     "pg:status": "tsx src/local-pg.ts status",
     "pg:destroy": "tsx src/local-pg.ts destroy",
     "seed:dev": "tsx src/seed-dev-fixture.ts",
-    "seed:demo": "tsx src/seed-demo-day.ts"
+    "seed:demo": "tsx src/seed-demo-day.ts",
+    "import:client": "tsx src/import-client-data.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.0.2",
