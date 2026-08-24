@@ -2,6 +2,7 @@ import { Injectable, Inject, BadRequestException } from '@nestjs/common';
 import pgLib from 'pg';
 import type { Pool, PoolClient } from 'pg';
 import { withRlsContext, type RlsSession } from '../db/rls-context.js';
+import { planPriceUpload, type CurrentSku, type PriceUploadPlan, type UploadedPriceRow } from './price-upload.js';
 import { validateSlabs } from './slab-rules.js';
 
 /**
@@ -74,6 +75,108 @@ export class MasterDataService {
    * unconfirmed have no ledger entry (D-124); completing them is a separate,
    * deliberate act, not a side effect of typing a number into a form.
    */
+  /**
+   * BULK price upload: what WOULD happen. Writes nothing.
+   *
+   * A preview is not a nicety here. The one-at-a-time screen has an admin looking
+   * at a single number against a single MRP; an upload has an admin looking at a
+   * filename. Showing the diff - every from, every to, every percentage - is the
+   * only point at which a tenfold typo is visible to a human before it changes
+   * what reps earn.
+   */
+  async previewPriceUpload(session: RlsSession, rows: readonly UploadedPriceRow[]): Promise<PriceUploadPlan> {
+    return this.write(session, async (client) => planPriceUpload(rows, await this.currentSkus(client)));
+  }
+
+  /**
+   * Applies the plan.
+   *
+   * RE-PLANNED HERE rather than trusting a plan posted back by the client. A
+   * client-supplied plan is a client-supplied money figure, and the browser is not
+   * where the authority for that lives. The rows are re-validated against the
+   * table as it is right now.
+   *
+   * WARNINGS MUST BE ACKNOWLEDGED. A large move on a confirmed price is applied
+   * only when the admin has said, in a separate field, that they meant it -
+   * otherwise the whole upload is refused and nothing is written. Applying the
+   * safe rows and skipping the warned ones would leave the price list in a state
+   * matching neither the file nor what it was before.
+   */
+  async applyPriceUpload(
+    session: RlsSession,
+    rows: readonly UploadedPriceRow[],
+    acknowledgeWarnings: boolean,
+  ) {
+    return this.write(session, async (client) => {
+      const plan = planPriceUpload(rows, await this.currentSkus(client));
+
+      if (plan.needsAcknowledgement > 0 && !acknowledgeWarnings) {
+        throw new BadRequestException(
+          `${plan.needsAcknowledgement} price(s) change by more than half. Large moves are ` +
+            `usually a typo, and these decide what every rep earns on those products. ` +
+            `Review them and confirm you meant it.`,
+        );
+      }
+
+      let applied = 0;
+      for (const v of plan.verdicts) {
+        if (v.kind !== 'ACCEPTED') continue;
+
+        await client.query(
+          `UPDATE sku
+              SET shopify_base_price = $2,
+                  shopify_base_price_confirmed = true,
+                  shopify_base_price_set_by = $3,
+                  shopify_base_price_set_at = now()
+            WHERE sku_id = $1`,
+          [v.skuId, v.to, session.userId],
+        );
+
+        // One audit row PER PRODUCT, not one for the upload. "Who changed this
+        // price and to what" is the question someone asks about a single product
+        // six months later, and a single row saying "40 prices uploaded" cannot
+        // answer it.
+        await client.query(
+          `INSERT INTO audit_log (actor_id, actor_role, action, entity_type, entity_id,
+                                  before_json, after_json)
+           VALUES ($1,$2::user_role,'SKU_BASE_PRICE_UPLOADED','sku',$3,$4::jsonb,$5::jsonb)`,
+          [
+            session.userId, session.role, v.skuId,
+            JSON.stringify({ base_price: v.from }),
+            JSON.stringify({ base_price: v.to, confirmed: true, via: 'bulk_upload' }),
+          ],
+        );
+        applied += 1;
+      }
+
+      const { rows: [pending] } = await client.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM sku WHERE is_active AND NOT shopify_base_price_confirmed`,
+      );
+
+      return { ...plan, applied, stillUnconfirmed: Number(pending?.n ?? '0') };
+    });
+  }
+
+  /** The SKU table as the planner needs it. */
+  private async currentSkus(client: import('pg').PoolClient): Promise<readonly CurrentSku[]> {
+    const { rows } = await client.query<{
+      sku_id: string; sku_code: string; product_name: string;
+      mrp: string; shopify_base_price: string | null; shopify_base_price_confirmed: boolean;
+    }>(
+      `SELECT sku_id, sku_code, product_name, mrp::text,
+              shopify_base_price::text, shopify_base_price_confirmed
+         FROM sku WHERE is_active`,
+    );
+    return rows.map((r) => ({
+      skuId: r.sku_id,
+      skuCode: r.sku_code,
+      productName: r.product_name,
+      mrp: r.mrp,
+      basePrice: r.shopify_base_price,
+      confirmed: r.shopify_base_price_confirmed,
+    }));
+  }
+
   async confirmBasePrice(session: RlsSession, input: ConfirmPriceInput) {
     if (!/^\d{1,8}(\.\d{1,2})?$/.test(input.basePrice)) {
       throw new BadRequestException('The base price must be a number, like 500 or 499.50.');

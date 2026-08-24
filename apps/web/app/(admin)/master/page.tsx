@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../../../lib/api';
 import { s, T } from '../../../lib/ui';
+import { PriceUploadPanel } from './price-upload-panel';
 
 /**
  * Master Data (docs/07 §6).
@@ -219,6 +220,14 @@ export default function MasterDataPage() {
           booked without one — that is a separate, deliberate step.
         </p>
       </section>
+
+      {/*
+        Directly after the per-product table, because it does the same job at a
+        different scale: that table is for correcting one price, this is for the
+        list moving. Both end in the same place - a confirmed price - and both now
+        complete any rep credit that was waiting on it.
+      */}
+      <PriceUploadPanel onApplied={load} />
 
       <section style={s.card}>
         <div style={s.cardHead}>
