@@ -71,6 +71,7 @@ beforeAll(async () => {
     `SELECT u.email, e.full_name, e.employee_id
        FROM employee e JOIN app_user u ON u.user_id = e.user_id
       WHERE u.role = 'EMPLOYEE' AND e.status = 'ACTIVE' AND NOT u.is_locked
+      AND e.emp_code LIKE 'EMP-%'
       ORDER BY e.emp_code LIMIT 2`,
   );
   if (reps.length < 2) throw new Error('need two active reps. Run db:seed && db:seed:dev.');

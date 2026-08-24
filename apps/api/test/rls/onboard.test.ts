@@ -24,8 +24,36 @@ let ownerSession: RlsSession;
 let adminSession: RlsSession;
 let onboard: OnboardService;
 
-/** Unique per run: emp_code and email are both UNIQUE and nothing is deleted. */
-const uniq = () => String(Date.now()).slice(-6) + Math.floor(Math.random() * 90 + 10);
+/**
+ * Unique per run. emp_code and email are both UNIQUE and nothing here is ever
+ * deleted, so every run of this suite adds permanently to the roster.
+ *
+ * THE FIRST VERSION USED THREE DIGITS and produced a genuinely flaky suite: a
+ * different test failed on each run, because the emp_code collided with one from
+ * an earlier run and whichever test happened to hit it got "EMP-911 is already in
+ * use" instead of the failure it was actually asserting. A test that fails
+ * differently every time is worse than one that fails consistently — it reads as
+ * an intermittent product bug rather than a broken fixture.
+ *
+ * A random four-letter prefix with four digits is ~4.5 billion combinations,
+ * which is enough that collisions stop being a thing anyone thinks about.
+ */
+/**
+ * ALWAYS STARTS WITH Z, and that is not cosmetic.
+ *
+ * Other suites pick their fixture reps with `AND emp_code LIKE 'EMP-%' ORDER BY emp_code LIMIT 2`. The
+ * first version of this generator produced codes like `ABCD-1234`, which sort
+ * BEFORE the seeded `EMP-001` — so the accounts created here became the roster
+ * those suites tested against, and adversarial.test.ts then tried to sign in as
+ * one with the shared dev password it does not have. Two whole files failed for a
+ * reason that had nothing to do with what they test.
+ *
+ * Sorting last keeps this suite's leftovers out of everyone else's way.
+ */
+const letters = () =>
+  'Z' + Array.from({ length: 3 }, () => String.fromCharCode(65 + Math.floor(Math.random() * 26))).join('');
+const code = () => `${letters()}-${Math.floor(1000 + Math.random() * 9000)}`;
+const uniq = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
 
 beforeAll(async () => {
   if (!DATABASE_URL) {
@@ -61,7 +89,7 @@ describe('the boundary an admin must not cross', () => {
     // can mint one for anybody, including a second account for themselves.
     await expect(
       onboard.add(adminSession, {
-        empCode: `ADM-${uniq().slice(-3)}`,
+        empCode: code(),
         fullName: 'Should Not Exist',
         email: `nope-${uniq()}@razorveda.local`,
         role: 'ADMIN',
@@ -77,7 +105,7 @@ describe('the boundary an admin must not cross', () => {
     await expect(
       onboard.add(
         { userId: rep!.user_id, role: 'EMPLOYEE' },
-        { empCode: `EMP-${uniq().slice(-3)}`, fullName: 'Nope', email: `x-${uniq()}@razorveda.local`, role: 'EMPLOYEE' },
+        { empCode: code(), fullName: 'Nope', email: `x-${uniq()}@razorveda.local`, role: 'EMPLOYEE' },
       ),
     ).rejects.toThrow(/admin/i);
   });
@@ -86,7 +114,7 @@ describe('the boundary an admin must not cross', () => {
     // The permitted half. Without this the refusal above could be implemented by
     // simply never allowing an admin to be created, and nobody would notice.
     const r = await onboard.add(ownerSession, {
-      empCode: `ADM-${uniq().slice(-3)}`,
+      empCode: code(),
       fullName: 'Real New Admin',
       email: `admin-${uniq()}@razorveda.local`,
       role: 'ADMIN',
@@ -100,7 +128,7 @@ describe('adding a rep', () => {
   it('creates a working login and an ACTIVE roster row', async () => {
     const email = `rep-${uniq()}@razorveda.local`;
     const r = await onboard.add(adminSession, {
-      empCode: `EMP-${uniq().slice(-3)}`,
+      empCode: code(),
       fullName: 'Brand New Rep',
       email,
       role: 'EMPLOYEE',
@@ -131,7 +159,7 @@ describe('adding a rep', () => {
     // silently taken from the request would not be, and it is the field that
     // decides incentive.
     const r = await onboard.add(adminSession, {
-      empCode: `EMP-${uniq().slice(-3)}`,
+      empCode: code(),
       fullName: 'Target Check',
       email: `target-${uniq()}@razorveda.local`,
       role: 'EMPLOYEE',
@@ -148,7 +176,7 @@ describe('adding a rep', () => {
     // control, and audit_log is readable by every admin.
     const email = `audit-${uniq()}@razorveda.local`;
     const r = await onboard.add(adminSession, {
-      empCode: `EMP-${uniq().slice(-3)}`,
+      empCode: code(),
       fullName: 'Audit Check',
       email,
       role: 'EMPLOYEE',
@@ -168,10 +196,10 @@ describe('adding a rep', () => {
     // Generated rather than chosen, because an admin setting passwords for seven
     // people sets the same one seven times.
     const a = await onboard.add(adminSession, {
-      empCode: `EMP-${uniq().slice(-3)}`, fullName: 'A', email: `a-${uniq()}@razorveda.local`, role: 'EMPLOYEE',
+      empCode: code(), fullName: 'A', email: `a-${uniq()}@razorveda.local`, role: 'EMPLOYEE',
     });
     const b = await onboard.add(adminSession, {
-      empCode: `EMP-${uniq().slice(-3)}`, fullName: 'B', email: `b-${uniq()}@razorveda.local`, role: 'EMPLOYEE',
+      empCode: code(), fullName: 'B', email: `b-${uniq()}@razorveda.local`, role: 'EMPLOYEE',
     });
     expect(a.temporaryPassword).not.toBe(b.temporaryPassword);
     expect(a.temporaryPassword.length).toBeGreaterThanOrEqual(20);
@@ -180,25 +208,26 @@ describe('adding a rep', () => {
 
 describe('refusing a duplicate, in words an admin can act on', () => {
   it('names the employee code when it collides', async () => {
-    const code = `EMP-${uniq().slice(-3)}`;
+    // Deliberately the SAME code twice — that is what is under test.
+    const shared = code();
     await onboard.add(adminSession, {
-      empCode: code, fullName: 'First', email: `first-${uniq()}@razorveda.local`, role: 'EMPLOYEE',
+      empCode: shared, fullName: 'First', email: `first-${uniq()}@razorveda.local`, role: 'EMPLOYEE',
     });
     await expect(
       onboard.add(adminSession, {
-        empCode: code, fullName: 'Second', email: `second-${uniq()}@razorveda.local`, role: 'EMPLOYEE',
+        empCode: shared, fullName: 'Second', email: `second-${uniq()}@razorveda.local`, role: 'EMPLOYEE',
       }),
-    ).rejects.toThrow(new RegExp(`${code}.*already in use`, 'i'));
+    ).rejects.toThrow(new RegExp(`${shared}.*already in use`, 'i'));
   });
 
   it('names the email when it collides', async () => {
     const email = `dupe-${uniq()}@razorveda.local`;
     await onboard.add(adminSession, {
-      empCode: `EMP-${uniq().slice(-3)}`, fullName: 'First', email, role: 'EMPLOYEE',
+      empCode: code(), fullName: 'First', email, role: 'EMPLOYEE',
     });
     await expect(
       onboard.add(adminSession, {
-        empCode: `EMP-${uniq().slice(-3)}`, fullName: 'Second', email, role: 'EMPLOYEE',
+        empCode: code(), fullName: 'Second', email, role: 'EMPLOYEE',
       }),
     ).rejects.toThrow(/already has an account/i);
   });

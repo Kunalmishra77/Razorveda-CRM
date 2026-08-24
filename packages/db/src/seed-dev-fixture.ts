@@ -35,7 +35,8 @@ async function main(): Promise<void> {
       `SELECT e.employee_id, e.full_name
          FROM employee e JOIN app_user u ON u.user_id = e.user_id
         WHERE u.role = 'EMPLOYEE' AND e.status = 'ACTIVE'
-        ORDER BY e.emp_code LIMIT 2`,
+        AND e.emp_code LIKE 'EMP-%'
+      ORDER BY e.emp_code LIMIT 2`,
     );
     if (reps.length < 2) throw new Error('need 2 active employees — run db:seed first');
     const [a, b] = reps as [{ employee_id: string; full_name: string }, { employee_id: string; full_name: string }];

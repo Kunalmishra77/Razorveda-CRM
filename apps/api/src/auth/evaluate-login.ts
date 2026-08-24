@@ -39,7 +39,30 @@ export type LoginDecision =
   | { readonly ok: false; readonly reason: LoginFailureReason; readonly message: string };
 
 /** ADMIN and OWNER carry mandatory 2FA (docs/05, Identity). */
-export const requiresTotp = (role: UserRole): boolean => role === 'ADMIN' || role === 'OWNER';
+/**
+ * Admins and the owner need a second factor. Reps do not — they dial from their
+ * own handsets all day and a 6-digit code every morning would be friction with no
+ * matching risk: a rep already only sees her own leads.
+ *
+ * WHY THIS IS SWITCHABLE, AND WHY IT IS ON BY DEFAULT.
+ *
+ * An admin can read every customer's phone number in the business, change the
+ * prices that decide what people are paid, and unlock accounts. If an admin
+ * password leaks, the second factor is the only thing left. So the default is ON,
+ * and it stays on unless somebody deliberately turns it off.
+ *
+ * `TOTP_DISABLED=1` turns it off. That exists because demanding an authenticator
+ * app before anyone can look at the product makes a local walkthrough painful,
+ * and the honest fix is a switch rather than pretending the requirement was never
+ * there. Set it in development; leaving it set in production means an admin
+ * account is one leaked password away from everything above.
+ *
+ * The API says which state it is in on every boot, so this is never a surprise.
+ */
+export const requiresTotp = (role: UserRole): boolean => {
+  if (process.env['TOTP_DISABLED'] === '1') return false;
+  return role === 'ADMIN' || role === 'OWNER';
+};
 
 /** ADMIN and OWNER are not shift-bound; reps are. */
 export const isShiftBound = (role: UserRole): boolean => role === 'EMPLOYEE';

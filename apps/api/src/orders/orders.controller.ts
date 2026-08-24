@@ -106,8 +106,40 @@ export class OrdersController {
         [status ?? null, from ?? null, to ?? null],
       );
 
+      // TOTALS FROM A COUNT, NOT FROM THE PAGE.
+      //
+      // The list is capped at 200. A screen that adds up what it received and
+      // calls the result "all time" reports 200 orders to someone who has
+      // thousands — and the rep's own performance page did exactly that, showing
+      // a lifetime delivered figure SMALLER than this month's. D-231 again: the
+      // count must never be the length of what was returned.
+      const { rows: [totals] } = await client.query<{
+        total: string; delivered: string; delivered_value: string; lost: string; in_flight: string;
+      }>(
+        `SELECT count(*)::text AS total,
+                count(*) FILTER (WHERE current_status = 'DELIVERED')::text AS delivered,
+                coalesce(sum(final_value) FILTER (WHERE current_status = 'DELIVERED'), 0)::text
+                  AS delivered_value,
+                count(*) FILTER (WHERE current_status IN ('RTO','RETURNED','CANCELLED'))::text AS lost,
+                count(*) FILTER (WHERE current_status NOT IN
+                  ('DELIVERED','RTO','RETURNED','CANCELLED'))::text AS in_flight
+           FROM "order" o
+          WHERE ($1::text IS NULL OR o.current_status::text = $1)
+            AND ($2::date IS NULL OR o.order_date >= $2::date)
+            AND ($3::date IS NULL OR o.order_date <= $3::date)`,
+        [status ?? null, from ?? null, to ?? null],
+      );
+
       return {
         ok: true,
+        shown: rows.length,
+        totals: {
+          total: Number(totals?.total ?? '0'),
+          delivered: Number(totals?.delivered ?? '0'),
+          deliveredValue: totals?.delivered_value ?? '0',
+          lost: Number(totals?.lost ?? '0'),
+          inFlight: Number(totals?.in_flight ?? '0'),
+        },
         orders: rows.map((r) => {
           const current = r.current_status as OrderStatusValue;
           const legal = nextStatuses(current);

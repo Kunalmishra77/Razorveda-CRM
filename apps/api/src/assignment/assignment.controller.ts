@@ -82,7 +82,7 @@ export class AssignmentController {
       );
 
       const total = await this.assignments.countPool(session, filter);
-      const { rows: reps } = await client.query(repQuery());
+      const { rows: reps } = await client.query(repQuery(false));
       return { ok: true, total, leads: rows, reps };
     });
   }
@@ -175,18 +175,32 @@ interface PoolLeadRow {
 }
 
 /** Open workload and last month's yield — the two inputs the Split panel uses. */
-const repQuery = (): string => `
+/**
+ * The rep list. `yield_per_lead` is OPTIONAL, and that is the point.
+ *
+ * It was computed on every call, and it is by far the expensive half: for each of
+ * 29 employees, join thirty days of her leads to their orders. The pool listing
+ * does not use the figure at all — only "Suggested split" does — so every load of
+ * the Assignment screen and every load of the admin home paid for a calculation
+ * nobody had asked for. That was most of a 5.8-second response returning 25 rows.
+ *
+ * Now the pool asks for `withYield: false` and gets the counts it displays;
+ * suggested-split asks for the full thing, once, when a human clicks the button.
+ */
+const repQuery = (withYield = true): string => `
   SELECT e.employee_id, e.full_name, e.status, e.wip_cap,
          (SELECT count(*) FROM lead l
            WHERE l.assigned_to = e.employee_id AND l.is_converted = false
              AND l.closed_at IS NULL)::text AS open_leads,
-         coalesce((
+         ${withYield
+           ? `coalesce((
            SELECT sum(o.final_value) / nullif(count(DISTINCT l2.lead_id), 0)
              FROM lead l2
              LEFT JOIN "order" o ON o.lead_id = l2.lead_id AND o.current_status = 'DELIVERED'
             WHERE l2.assigned_to = e.employee_id
               AND l2.assigned_at > now() - interval '30 days'
-         ), 0)::text AS yield_per_lead
+         ), 0)::text`
+           : `'0'`} AS yield_per_lead
     FROM employee e
    WHERE e.status <> 'EXITED'
    ORDER BY e.emp_code`;

@@ -65,6 +65,15 @@ async function bootstrap(): Promise<void> {
   await app.listen(PORT);
   console.log(`api      http://localhost:${PORT}/health`);
   console.log(`api      security headers on, rate limiting on, origin locked to ${webOrigin}`);
+
+  // Said out loud on every boot. A security control that can be switched off
+  // silently is one nobody notices is off — and this is the one standing between
+  // a leaked admin password and every phone number in the business.
+  console.log(
+    process.env['TOTP_DISABLED'] === '1'
+      ? 'api      !! TWO-FACTOR IS OFF for admins (TOTP_DISABLED=1). Development only.'
+      : 'api      two-factor required for admins and the owner',
+  );
   if (!production) console.log('api      HSTS off and cookies not secure — NODE_ENV is not production');
 }
 

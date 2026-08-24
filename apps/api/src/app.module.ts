@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import pg from 'pg';
 import { HealthController } from './health.controller.js';
@@ -7,6 +7,7 @@ import { MetricsController } from './metrics.controller.js';
 import { AuthController } from './auth/auth.controller.js';
 import { AuthService } from './auth/auth.service.js';
 import { SessionGuard } from './auth/session.guard.js';
+import { ErrorsFilter } from './errors.filter.js';
 import { IngestionController } from './ingestion/ingestion.controller.js';
 import { UploadService } from './ingestion/upload.service.js';
 import { CommitService } from './ingestion/commit.service.js';
@@ -129,6 +130,10 @@ import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
       inject: [pg.Pool, IncentiveService, ReportsService],
     },
     { provide: APP_GUARD, useClass: SessionGuard },
+    // Registered globally so no route can quietly answer "Internal server error"
+    // to a problem the system already understands — a stopped database being the
+    // one that actually happened.
+    { provide: APP_FILTER, useClass: ErrorsFilter },
   ],
 })
 export class AppModule {}

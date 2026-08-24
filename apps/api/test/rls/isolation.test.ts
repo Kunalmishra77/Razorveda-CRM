@@ -65,6 +65,7 @@ beforeAll(async () => {
     `SELECT u.user_id, e.employee_id, e.full_name
        FROM employee e JOIN app_user u ON u.user_id = e.user_id
       WHERE u.role = 'EMPLOYEE' AND e.status = 'ACTIVE'
+      AND e.emp_code LIKE 'EMP-%'
       ORDER BY e.emp_code LIMIT 2`,
   );
   reps = rows.map((r) => ({ userId: r.user_id, employeeId: r.employee_id, name: r.full_name }));
@@ -195,7 +196,24 @@ describe('docs/05 — the eight isolation tests', () => {
     expect(asRep).toBeLessThanOrEqual(asAdmin);
   });
 
-  it('8. the same query as the table OWNER returns MORE — proving SET ROLE is required', async () => {
+  /**
+   * SLOW ON PURPOSE, so it gets its own timeout.
+   *
+   * `SELECT count(*) FROM lead` as a rep is a sequential scan of every lead in
+   * the business — 180,215 rows at the client's volume, 6.5 seconds — because the
+   * policy reads `is_admin() OR assigned_to = current_employee_id()` and the OR
+   * stops the planner using an index for either branch.
+   *
+   * That is worth knowing and is NOT a production problem: no API path counts the
+   * whole table. The worklist filters and caps at 50 (D-231), reports read
+   * certified views, and every other rep query carries its own WHERE. This test
+   * deliberately does the unfiltered thing precisely because it is the shape that
+   * proves RLS is applied at all.
+   *
+   * Measured rather than assumed: EXPLAIN ANALYZE as app_role, not as the owner,
+   * because timing this as the table owner proves nothing (D-235).
+   */
+  it('8. the same query as the table OWNER returns MORE — proving SET ROLE is required', { timeout: 120_000 }, async () => {
     // The test that stops every other test in this file from lying.
     //
     // Without SET LOCAL ROLE app_role the query runs as the migration user, which

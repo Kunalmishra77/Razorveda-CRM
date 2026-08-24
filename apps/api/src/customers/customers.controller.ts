@@ -37,8 +37,41 @@ export class CustomersController {
   @Get()
   async search(@Query('q') q: string | undefined, @Req() request: AuthedRequest) {
     const term = (q ?? '').trim();
+
+    /**
+     * NO SEARCH TERM MEANS DIFFERENT THINGS TO DIFFERENT PEOPLE.
+     *
+     * The three-character minimum exists so nobody can pull the entire customer
+     * base with an empty box. For an ADMIN that is exactly right — their scope is
+     * every customer in the business.
+     *
+     * For a REP it made the screen lie. Her scope is already tiny and personal:
+     * `customer_isolation` gives her only the customers she has a lead for or owns
+     * after a delivery. Making her guess a name before she can see her own list
+     * meant "My customers" opened on "No customers yet" for someone with twelve.
+     *
+     * So an empty term lists HER customers, capped, most useful first. An admin
+     * with an empty term still gets the message.
+     */
     if (term.length < 3) {
-      return { ok: true, customers: [], message: 'Type at least three characters.' };
+      if (request.session!.role !== 'EMPLOYEE') {
+        return { ok: true, customers: [], message: 'Type at least three characters.' };
+      }
+      return withRlsContext(this.pool, request.session!, async (client) => {
+        const { rows } = await client.query(
+          `SELECT c.customer_id, c.full_name, c.primary_phone, c.city, c.state,
+                  c.stage::text, c.lifetime_orders, c.lifetime_value::text, c.next_due_date,
+                  c.do_not_call
+             FROM customer c
+            ORDER BY
+              -- Anyone due to reorder first: that is a call she can make today.
+              (c.next_due_date IS NOT NULL AND c.next_due_date <= CURRENT_DATE) DESC,
+              c.lifetime_value DESC NULLS LAST,
+              c.full_name
+            LIMIT 50`,
+        );
+        return { ok: true, customers: rows, message: null };
+      });
     }
 
     return withRlsContext(this.pool, request.session!, async (client) => {
@@ -53,7 +86,8 @@ export class CustomersController {
         // in from her second phone is the same person (rule 4), and a search that
         // only looked at `primary_phone` would say she does not exist.
         `SELECT c.customer_id, c.full_name, c.primary_phone, c.city, c.state,
-                c.stage::text, c.lifetime_orders, c.lifetime_value::text, c.next_due_date
+                c.stage::text, c.lifetime_orders, c.lifetime_value::text, c.next_due_date,
+                c.do_not_call
            FROM customer c
           WHERE c.full_name ILIKE '%' || $1 || '%'
              OR c.primary_phone LIKE '%' || $1 || '%'

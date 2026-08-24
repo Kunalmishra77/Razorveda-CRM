@@ -70,6 +70,7 @@ beforeAll(async () => {
           SELECT 1 FROM pii_access_log p
            WHERE p.employee_id = e.employee_id
              AND p.occurred_at >= now() - interval '120 seconds')
+      AND e.emp_code LIKE 'EMP-%'
       ORDER BY e.emp_code LIMIT 1`,
   );
   if (!r) {

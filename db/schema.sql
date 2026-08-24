@@ -363,6 +363,16 @@ CREATE INDEX ix_lead_open_assigned    ON lead(assigned_to, next_followup_at)
 
 CREATE INDEX ix_lead_worklist  ON lead(assigned_to, next_followup_at) WHERE NOT is_converted;
 CREATE INDEX ix_lead_pool      ON lead(source_id, received_at DESC)   WHERE assigned_to IS NULL;
+
+-- THE POOL AS IT IS ACTUALLY READ: oldest first, no source filter.
+--
+-- ix_lead_pool above leads on source_id, so the unfiltered listing that the
+-- Assignment screen and the admin home both use could not seek on it and fell
+-- back to sorting the whole partial index — 5.8 seconds to return 25 rows and a
+-- count. The predicate here matches the query's WHERE exactly, including the two
+-- clauses that keep converted and closed leads out of the pool.
+CREATE INDEX ix_lead_pool_oldest ON lead(received_at)
+  WHERE assigned_to IS NULL AND NOT is_converted AND closed_at IS NULL;
 CREATE INDEX ix_lead_untouched ON lead(assigned_at) WHERE contact_attempts = 0 AND assigned_to IS NOT NULL;
 
 CREATE TABLE lead_assignment (                 -- APPEND ONLY

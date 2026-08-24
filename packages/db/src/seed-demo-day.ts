@@ -133,7 +133,11 @@ async function main(): Promise<void> {
     const { rows: [rep] } = await client.query<{ employee_id: string; full_name: string }>(
       `SELECT e.employee_id, e.full_name
          FROM employee e JOIN app_user u ON u.user_id = e.user_id
+        -- Seeded roster only. Tests and the onboarding screen both create
+        -- employees, and "whichever sorts first" once picked one of those as the
+        -- demo rep — so the demo was built for an account nobody can sign in as.
         WHERE u.role = 'EMPLOYEE' AND e.status = 'ACTIVE'
+          AND e.emp_code LIKE 'EMP-%'
         ORDER BY e.emp_code LIMIT 1`,
     );
     if (!rep) throw new Error('No active rep. Run npm run db:seed first.');
@@ -213,6 +217,13 @@ async function main(): Promise<void> {
     console.log(`   ${created} demo leads: 2 overdue, 2 due today, 2 repeat, 3 new, 3 ageing`);
     console.log(`   remarks are Hinglish, as the team actually writes them`);
     console.log('seed:demo ok — pretend customers, never for production');
+    console.log('');
+    // Said out loud, because the two seeds genuinely fight and the failure is
+    // confusing: this parks every other lead the rep holds so the demo screen is
+    // readable, and the isolation suite needs her to hold plenty.
+    console.log('   NOTE: this parked the other leads this rep holds, to keep the demo readable.');
+    console.log('         Run `npm run db:seed:dev` before the RLS suite to put them back,');
+    console.log('         then re-run this before showing anyone.');
   } catch (e) {
     await client.query('ROLLBACK').catch(() => undefined);
     throw e;

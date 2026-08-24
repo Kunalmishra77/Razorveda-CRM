@@ -54,6 +54,29 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
         <Link href="/worklist" style={{ ...brand, textDecoration: 'none', color: '#fff' }}>
           RAZORVEDA
         </Link>
+
+        {/*
+          A REP HAD NO WAY TO GET ANYWHERE.
+          The shell was a logo and a sign-out button, so the only screen she could
+          reach was whichever one she happened to land on. Everything she owns —
+          her customers, her orders, how she is doing — existed in the database
+          and nowhere she could click.
+
+          Four items, and it stays four. This is the whole product for the person
+          who uses it most, and a rail of a dozen links would be the admin's
+          problem transplanted onto her.
+        */}
+        <nav aria-label="Your sections" style={{ display: 'flex', gap: 2, marginLeft: 18, flex: 1 }}>
+          {REP_NAV.map((item) => {
+            const active = pathname.startsWith(item.href);
+            return (
+              <Link key={item.href} href={item.href} style={repLink(active)}>
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <span style={{ ...s.mono, color: '#C9CFDA', fontSize: 12 }}>{session.role}</span>
           <button type="button" onClick={signOut} style={{ ...s.btn, background: 'transparent', color: '#fff', borderColor: '#3A4150' }}>
@@ -79,3 +102,22 @@ const brand: React.CSSProperties = {
   font: '600 17px/1 "Barlow Condensed", system-ui, sans-serif',
   letterSpacing: '2px',
 };
+
+/** Named for what she calls them, not for what the tables are called. */
+const REP_NAV = [
+  { href: '/worklist', label: 'My day' },
+  { href: '/my-customers', label: 'My customers' },
+  { href: '/my-orders', label: 'My orders' },
+  { href: '/how-am-i-doing', label: 'How am I doing' },
+] as const;
+
+const repLink = (active: boolean): React.CSSProperties => ({
+  padding: '7px 12px',
+  borderRadius: 3,
+  color: active ? '#fff' : '#C9CFDA',
+  background: active ? '#2A3040' : 'transparent',
+  textDecoration: 'none',
+  fontSize: 13.5,
+  fontWeight: active ? 600 : 400,
+  whiteSpace: 'nowrap',
+});

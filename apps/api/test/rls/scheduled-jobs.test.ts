@@ -103,7 +103,18 @@ describe('the scheduled-jobs actor', () => {
   });
 });
 
-describe('refresh_certified_views()', () => {
+/**
+ * A FULL REFRESH IS GENUINELY SLOW, so these get their own timeout.
+ *
+ * Measured on the client's volume — 180,000 orders, 996,000 status events — a
+ * cold refresh of all six materialised views takes about twenty seconds, then
+ * around six when warm (D-263). The suite default of 30s is fine for everything
+ * else here and too tight for two tests that each rebuild every certified view.
+ *
+ * Raised rather than mocked: what is being tested is that `app_role` can really
+ * execute this against a real database, and a faster fake would test nothing.
+ */
+describe('refresh_certified_views()', { timeout: 180_000 }, () => {
   it('the application role can execute it, even though it owns nothing', async () => {
     // This is the whole point. REFRESH MATERIALIZED VIEW needs ownership; app_role
     // has none by design (D-21). Without the SECURITY DEFINER doorway the refresh

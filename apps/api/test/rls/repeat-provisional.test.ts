@@ -81,7 +81,8 @@ afterAll(async () => {
 async function customerDueToday(provisional: boolean): Promise<string> {
   const { rows: [rep] } = await pool.query<{ employee_id: string }>(
     `SELECT e.employee_id FROM employee e JOIN app_user u ON u.user_id = e.user_id
-      WHERE u.role = 'EMPLOYEE' AND e.status = 'ACTIVE' ORDER BY e.emp_code LIMIT 1`,
+      WHERE u.role = 'EMPLOYEE' AND e.status = 'ACTIVE' AND e.emp_code LIKE 'EMP-%'
+      ORDER BY e.emp_code LIMIT 1`,
   );
   if (!rep) throw new Error('no active rep seeded — run npm run db:seed:dev');
 

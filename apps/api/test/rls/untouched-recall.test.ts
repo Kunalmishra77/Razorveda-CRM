@@ -49,7 +49,7 @@ beforeAll(async () => {
   admin = { userId: a.user_id, role: 'ADMIN' };
 
   const { rows: [rep] } = await pool.query<{ employee_id: string }>(
-    `SELECT employee_id FROM employee WHERE status = 'ACTIVE' ORDER BY emp_code LIMIT 1`,
+    `SELECT employee_id FROM employee WHERE status = 'ACTIVE' AND emp_code LIKE 'EMP-%' ORDER BY emp_code LIMIT 1`,
   );
   if (!rep) throw new Error('need an active employee. Run db:seed.');
   repId = rep.employee_id;
