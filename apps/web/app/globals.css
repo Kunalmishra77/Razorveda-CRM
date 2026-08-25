@@ -1,0 +1,107 @@
+/*
+ * The base layer. `lib/ui.ts` styles components; this handles the things a
+ * per-element style object cannot reach — the page ground, focus rings, form
+ * control inheritance, and how text is rendered.
+ *
+ * There was no stylesheet at all before this: the body carried three inline
+ * properties and nothing else. So form controls used the browser's default font
+ * (Chrome falls back to a 13.33px system face inside inputs and selects
+ * regardless of what the page sets), focus had only the default outline, and the
+ * three loaded families reached nothing that did not name them explicitly.
+ */
+
+:root {
+  --paper: #e7eaee;
+  --card: #ffffff;
+  --line: #d4d9e0;
+  --text: #181b24;
+  --muted: #606a7b;
+  --brass: #c08a1e;
+  --indigo: #2e4a8f;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* Anchors and skip-links land below the header rather than under it. */
+  scroll-padding-top: 16px;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--text);
+  font-family: var(--font-sans), system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  /* Without these the loaded weights render noticeably heavier on macOS than the
+     design intends, and the condensed face in particular turns muddy. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/*
+ * FORM CONTROLS DO NOT INHERIT TYPE, and this was visible on every screen.
+ * A <select> or <input> renders in the browser's own UI font unless told
+ * otherwise, so the filter row on Assigned Leads sat in a different typeface
+ * from the table directly beneath it.
+ */
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* Numbers line up. The tokens file calls this non-negotiable for an MIS tool. */
+input[type='number'],
+input[inputmode='numeric'] {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * A VISIBLE FOCUS RING, on the keyboard only.
+ *
+ * Reps work this product at speed and several of them will tab between the
+ * outcome buttons rather than reach for a mouse. `:focus-visible` keeps the ring
+ * off mouse clicks, where it reads as a stuck selection.
+ */
+:focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+::selection {
+  background: rgba(192, 138, 30, 0.22);
+}
+
+/*
+ * Tables carry most of this product. `border-collapse` is set per-table in
+ * ui.ts; this is the part that has to be global — numeric cells must not wrap
+ * mid-figure, and a long Hinglish remark must not force a horizontal scrollbar
+ * onto the whole page.
+ */
+table {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Respect a viewer who has asked for less movement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

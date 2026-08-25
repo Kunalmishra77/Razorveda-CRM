@@ -188,7 +188,7 @@ export default function OrdersPage() {
                               // Delivery pays; a return takes it back. Both are
                               // marked so nobody clicks one thinking it is routine.
                               style={to === 'DELIVERED' ? s.btnPrimary
-                                : ['RTO', 'RETURNED'].includes(to) ? { ...s.btn, borderColor: T.clay, color: T.clay }
+                                : ['RTO', 'RETURNED'].includes(to) ? { ...s.btn, border: `1px solid ${T.clay}`, color: T.clay }
                                 : s.btn}
                               title={hint(o, to)}
                             >

@@ -225,7 +225,7 @@ export function SplitPanel({
                       }
                       style={{
                         ...s.input, width: 90, textAlign: 'right',
-                        ...(overCap ? { borderColor: T.brass } : {}),
+                        ...(overCap ? { border: `1px solid ${T.brass}` } : {}),
                       }}
                     />
                     {overCap && (

@@ -311,7 +311,7 @@ function Figure({
       <div style={{ ...s.mono, fontSize: 24, fontWeight: 600, color: tone ?? T.text }}>{value}</div>
       <div
         style={{
-          font: '600 11px/1 "Barlow Condensed", sans-serif',
+          font: '600 11px/1 var(--font-display), "Barlow Condensed", sans-serif',
           textTransform: 'uppercase',
           letterSpacing: '1.3px',
           color: T.muted,

@@ -347,13 +347,10 @@ function Kpi({ v, k, note, tone }: {
   note?: string | undefined; tone?: string | undefined;
 }) {
   return (
-    <div style={s.card}>
-      <div style={{ ...s.mono, fontSize: 24, fontWeight: 600, lineHeight: 1, color: tone ?? T.text }}>{v}</div>
-      <div style={{
-        font: '600 10.5px/1 "Barlow Condensed", sans-serif', textTransform: 'uppercase',
-        letterSpacing: '1.2px', color: T.muted, marginTop: 5,
-      }}>{k}</div>
-      {note && <div style={{ color: T.faint, fontSize: 11.5, marginTop: 2 }}>{note}</div>}
+    <div style={s.kpiCard}>
+      <div style={{ ...s.kpiValue, color: tone ?? T.text }}>{v}</div>
+      <div style={s.kpiLabel}>{k}</div>
+      {note && <div style={s.kpiNote}>{note}</div>}
     </div>
   );
 }

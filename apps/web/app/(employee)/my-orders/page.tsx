@@ -130,7 +130,7 @@ export default function MyOrders() {
 
       {orders.length === 0 ? (
         <section style={{ ...s.card, textAlign: 'center', padding: '34px 20px' }}>
-          <p style={{ font: '600 16px/1.3 "IBM Plex Sans", sans-serif', margin: '0 0 6px' }}>
+          <p style={{ font: '600 16px/1.3 var(--font-sans), "IBM Plex Sans", sans-serif', margin: '0 0 6px' }}>
             You have not booked an order yet.
           </p>
           <p style={{ ...s.sub, margin: 0 }}>
@@ -159,7 +159,7 @@ export default function MyOrders() {
             <section key={g.key} style={{ marginBottom: 18 }}>
               <p
                 style={{
-                  font: '600 11px/1 "Barlow Condensed", sans-serif',
+                  font: '600 11px/1 var(--font-display), "Barlow Condensed", sans-serif',
                   textTransform: 'uppercase',
                   letterSpacing: '1.6px',
                   color: g.tone,

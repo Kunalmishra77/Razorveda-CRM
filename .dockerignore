@@ -1,0 +1,30 @@
+# Everything the image does not need. Keeping this tight is what makes the build
+# context small enough that Coolify's builder is not shipping a gigabyte of
+# node_modules and .next caches over the wire on every deploy.
+
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+.git
+.github
+
+# Local state that must never reach a server.
+.env
+.env.local
+.pgdata
+.backups
+test-data
+
+# Test and tooling output.
+coverage
+playwright-report
+test-results
+.playwright-mcp
+*.log
+
+# Development-only database tooling. The deployed stack uses the Postgres
+# service in the compose file, not the embedded local one.
+**/.pgdata

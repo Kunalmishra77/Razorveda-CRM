@@ -196,7 +196,7 @@ export default function LeadDetail() {
         <h1 style={{ ...s.h1, margin: 0 }}>{lead.full_name ?? 'Unknown customer'}</h1>
         {temp && (
           <span style={{
-            font: '600 10.5px/1 "Barlow Condensed", sans-serif', textTransform: 'uppercase',
+            font: '600 10.5px/1 var(--font-display), "Barlow Condensed", sans-serif', textTransform: 'uppercase',
             letterSpacing: '1.2px', color: TEMP_TONE[temp], border: `1px solid ${TEMP_TONE[temp]}`,
             borderRadius: 3, padding: '4px 7px',
           }}>{temp}</span>

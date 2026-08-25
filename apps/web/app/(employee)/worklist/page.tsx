@@ -228,7 +228,7 @@ export default function Worklist() {
         >
           <p
             style={{
-              font: '600 11px/1 "Barlow Condensed", sans-serif',
+              font: '600 11px/1 var(--font-display), "Barlow Condensed", sans-serif',
               textTransform: 'uppercase',
               letterSpacing: '1.8px',
               color: REASON[next.band]?.tone ?? T.faint,
@@ -240,7 +240,7 @@ export default function Worklist() {
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-end' }}>
             <div>
-              <p style={{ font: '600 24px/1.15 "IBM Plex Sans", sans-serif', margin: '0 0 6px' }}>
+              <p style={{ font: '600 24px/1.15 var(--font-sans), "IBM Plex Sans", sans-serif', margin: '0 0 6px' }}>
                 {next.fullName ?? 'Name not recorded'}
               </p>
               <p style={{ ...s.mono, fontSize: 30, letterSpacing: '1px', margin: 0, fontWeight: 500 }}>
@@ -258,7 +258,7 @@ export default function Worklist() {
                   setTimeout(() => setCopied(false), 1800);
                 }}
                 style={{
-                  font: '600 13px/1 "IBM Plex Sans", sans-serif',
+                  font: '600 13px/1 var(--font-sans), "IBM Plex Sans", sans-serif',
                   background: 'transparent',
                   color: '#FFFFFF',
                   border: '1px solid rgba(255,255,255,.35)',
@@ -272,7 +272,7 @@ export default function Worklist() {
               <Link
                 href={`/leads/${next.leadId}`}
                 style={{
-                  font: '600 13px/1 "IBM Plex Sans", sans-serif',
+                  font: '600 13px/1 var(--font-sans), "IBM Plex Sans", sans-serif',
                   background: '#FFFFFF',
                   color: T.ink,
                   borderRadius: 3,
@@ -338,7 +338,7 @@ export default function Worklist() {
         </section>
       ) : (
         <section style={{ ...s.card, textAlign: 'center', padding: '38px 20px', marginBottom: 18 }}>
-          <p style={{ font: '600 18px/1.3 "IBM Plex Sans", sans-serif', margin: '0 0 6px' }}>
+          <p style={{ font: '600 18px/1.3 var(--font-sans), "IBM Plex Sans", sans-serif', margin: '0 0 6px' }}>
             Nothing waiting for you right now.
           </p>
           <p style={{ ...s.sub, margin: 0 }}>
@@ -369,7 +369,7 @@ export default function Worklist() {
               <div key={band} style={{ marginBottom: 14 }}>
                 <p
                   style={{
-                    font: '600 11px/1 "Barlow Condensed", sans-serif',
+                    font: '600 11px/1 var(--font-display), "Barlow Condensed", sans-serif',
                     textTransform: 'uppercase',
                     letterSpacing: '1.6px',
                     color: reason?.tone ?? T.muted,
@@ -445,7 +445,7 @@ function Small({ children }: { children: React.ReactNode }) {
   return (
     <p
       style={{
-        font: '600 10.5px/1 "Barlow Condensed", sans-serif',
+        font: '600 10.5px/1 var(--font-display), "Barlow Condensed", sans-serif',
         textTransform: 'uppercase',
         letterSpacing: '1.5px',
         color: 'rgba(255,255,255,.5)',

@@ -197,7 +197,7 @@ export function PriceUploadPanel({ onApplied }: { onApplied: () => void }) {
                         style={{
                           ...s.pill('flat'),
                           fontSize: 10,
-                          borderColor: v.kind === 'REJECTED' ? T.clay : v.kind === 'ACCEPTED' ? T.vine : T.faint,
+                          border: `1px solid ${v.kind === 'REJECTED' ? T.clay : v.kind === 'ACCEPTED' ? T.vine : T.faint}`,
                           color: v.kind === 'REJECTED' ? T.clay : v.kind === 'ACCEPTED' ? T.vine : T.muted,
                         }}
                       >

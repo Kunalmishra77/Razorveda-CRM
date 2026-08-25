@@ -139,7 +139,7 @@ export default function AssignedLeads() {
               style={{
                 ...s.btn,
                 ...(band === b.key
-                  ? { background: T.ink, color: '#fff', borderColor: T.ink }
+                  ? { background: T.ink, color: '#fff', border: `1px solid ${T.ink}` }
                   : {}),
               }}
             >
@@ -170,13 +170,13 @@ export default function AssignedLeads() {
         </div>
 
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center', marginTop: 10 }}>
-          <span style={{ font: '600 10.5px/1 "Barlow Condensed", sans-serif', textTransform: 'uppercase', letterSpacing: '1.4px', color: T.muted }}>
+          <span style={{ font: '600 10.5px/1 var(--font-display), "Barlow Condensed", sans-serif', textTransform: 'uppercase', letterSpacing: '1.4px', color: T.muted }}>
             Showing
           </span>
           {chips.length === 0
             ? <span style={{ color: T.faint, fontSize: 12.5 }}>everything</span>
             : chips.map((c) => (
-              <span key={c} style={{ ...s.pill('flat'), borderColor: T.indigo, color: T.indigo }}>{c}</span>
+              <span key={c} style={{ ...s.pill('flat'), border: `1px solid ${T.indigo}`, color: T.indigo }}>{c}</span>
             ))}
           {data && (
             <span style={{ color: T.muted, fontSize: 12.5 }}>
@@ -194,7 +194,7 @@ export default function AssignedLeads() {
 
       {data && data.leads.length === 0 && (
         <section style={{ ...s.card, textAlign: 'center', padding: '32px 20px' }}>
-          <p style={{ font: '600 16px/1.3 "IBM Plex Sans", sans-serif', margin: '0 0 6px' }}>
+          <p style={{ font: '600 16px/1.3 var(--font-sans), "IBM Plex Sans", sans-serif', margin: '0 0 6px' }}>
             {chips.length ? 'Nothing matches those filters.' : 'You have no leads yet.'}
           </p>
           <p style={{ ...s.sub, margin: 0 }}>
@@ -239,14 +239,14 @@ export default function AssignedLeads() {
                       {l.disposition
                         ? <span style={{
                           ...s.pill('flat'),
-                          borderColor: CAT_TONE[l.disposition_category ?? ''] ?? T.faint,
+                          border: `1px solid ${CAT_TONE[l.disposition_category ?? ''] ?? T.faint}`,
                           color: CAT_TONE[l.disposition_category ?? ''] ?? T.faint,
                         }}>{l.disposition}</span>
                         : <span style={{ color: T.faint, fontSize: 12 }}>never called</span>}
                     </td>
                     <td style={s.td}>
                       {l.temperature
-                        ? <span style={{ ...s.pill('flat'), borderColor: TEMP_TONE[l.temperature], color: TEMP_TONE[l.temperature] }}>
+                        ? <span style={{ ...s.pill('flat'), border: `1px solid ${TEMP_TONE[l.temperature]}`, color: TEMP_TONE[l.temperature] }}>
                           {l.temperature.toLowerCase()}
                         </span>
                         : <span style={{ color: T.faint }}>—</span>}

@@ -114,7 +114,7 @@ export default function MyCustomers() {
 
       {rows !== null && rows.length === 0 && (
         <section style={{ ...s.card, textAlign: 'center', padding: '32px 20px' }}>
-          <p style={{ font: '600 16px/1.3 "IBM Plex Sans", sans-serif', margin: '0 0 6px' }}>
+          <p style={{ font: '600 16px/1.3 var(--font-sans), "IBM Plex Sans", sans-serif', margin: '0 0 6px' }}>
             {hint ?? (q ? `Nobody of yours matches “${q}”.` : 'No customers yet.')}
           </p>
           <p style={{ ...s.sub, margin: 0 }}>

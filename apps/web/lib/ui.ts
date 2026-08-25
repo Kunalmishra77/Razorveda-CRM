@@ -23,13 +23,25 @@ export const T = {
   indigo: '#2E4A8F',
 } as const;
 
-const DISPLAY = '600 12px/1.1 "Barlow Condensed", system-ui, sans-serif';
-const MONO = '"IBM Plex Mono", ui-monospace, SFMono-Regular, monospace';
+/**
+ * THE THREE FAMILIES, VIA THE VARIABLES layout.tsx DEFINES.
+ *
+ * These used to name the families literally — "Barlow Condensed", "IBM Plex
+ * Mono" — and nothing loaded them, so every heading, label and number rendered
+ * in system-ui and the whole type system was decorative. Going through the CSS
+ * variables means the font that is actually loaded is the font that is used, and
+ * a missing load is visible rather than silent.
+ */
+const DISPLAY_FAMILY = 'var(--font-display), "Barlow Condensed", system-ui, sans-serif';
+const MONO_FAMILY = 'var(--font-mono), ui-monospace, SFMono-Regular, monospace';
+
+const DISPLAY = `600 12px/1.1 ${DISPLAY_FAMILY}`;
+const MONO = MONO_FAMILY;
 
 export const s = {
   page: { padding: '20px 24px', color: T.text, maxWidth: 1180, margin: '0 auto' },
   h1: {
-    font: '600 22px/1.2 "Barlow Condensed", system-ui, sans-serif',
+    font: `600 26px/1.15 ${DISPLAY_FAMILY}`,
     letterSpacing: '1.6px',
     textTransform: 'uppercase',
     margin: '0 0 4px',
@@ -69,7 +81,7 @@ export const s = {
   },
   td: { padding: '8px 6px', borderBottom: `1px solid ${T.line2}`, verticalAlign: 'top' },
   /** Every number, id, code and currency value. Non-negotiable per the tokens. */
-  mono: { fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontSize: 12.4 },
+  mono: { fontFamily: MONO_FAMILY, fontVariantNumeric: 'tabular-nums', fontSize: 12.6 },
 
   btn: {
     border: `1px solid ${T.line}`,
@@ -112,7 +124,7 @@ export const s = {
   /** Status is never colour alone — always paired with a word (docs/07 §6). */
   pill: (tone: 'ok' | 'warn' | 'bad' | 'flat'): CSSProperties => ({
     display: 'inline-block',
-    font: MONO,
+    fontFamily: MONO_FAMILY,
     fontSize: 11,
     padding: '2px 7px',
     borderRadius: 3,
@@ -136,6 +148,38 @@ export const s = {
     fontSize: 13,
     whiteSpace: 'pre-wrap',
   }),
+
+  /**
+   * A HEADLINE FIGURE. The number is the content; everything else labels it.
+   *
+   * The first version set it at 24px inside a 14px-padded card, so each card was
+   * mostly white space with a small number floating in the corner — six of them
+   * in a row read as an empty grid rather than as the answer to "what is left
+   * today". The figure now carries the card and the label sits under it.
+   */
+  kpiCard: {
+    background: T.card,
+    border: `1px solid ${T.line}`,
+    borderRadius: 3,
+    padding: '13px 14px 14px',
+    marginBottom: 0,
+  },
+  kpiValue: {
+    fontFamily: MONO_FAMILY,
+    fontVariantNumeric: 'tabular-nums',
+    fontSize: 32,
+    fontWeight: 500,
+    lineHeight: 1,
+    letterSpacing: '-0.6px',
+  },
+  kpiLabel: {
+    font: `600 11px/1.15 ${DISPLAY_FAMILY}`,
+    textTransform: 'uppercase',
+    letterSpacing: '1.3px',
+    color: T.muted,
+    marginTop: 8,
+  },
+  kpiNote: { color: T.faint, fontSize: 11.5, marginTop: 3, lineHeight: 1.35 },
 
   empty: { color: T.muted, fontSize: 13, padding: '18px 6px' },
 

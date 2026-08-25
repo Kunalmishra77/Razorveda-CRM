@@ -142,7 +142,7 @@ export default function Today() {
 
       {!anyFailed && !stillChecking && waiting.length === 0 && (
         <section style={{ ...s.card, padding: '34px 20px', textAlign: 'center' }}>
-          <p style={{ font: '600 18px/1.3 "IBM Plex Sans", sans-serif', margin: '0 0 6px', color: T.vine }}>
+          <p style={{ font: '600 18px/1.3 var(--font-sans), "IBM Plex Sans", sans-serif', margin: '0 0 6px', color: T.vine }}>
             Nothing is waiting.
           </p>
           <p style={{ ...s.sub, margin: 0 }}>

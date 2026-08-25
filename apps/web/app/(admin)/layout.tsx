@@ -152,7 +152,7 @@ const rail: React.CSSProperties = {
 };
 
 const brand: React.CSSProperties = {
-  font: '600 17px/1 "Barlow Condensed", system-ui, sans-serif',
+  font: '600 17px/1 var(--font-display), "Barlow Condensed", system-ui, sans-serif',
   letterSpacing: '2px',
 };
 

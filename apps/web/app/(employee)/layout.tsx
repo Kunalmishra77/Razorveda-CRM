@@ -79,7 +79,7 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <span style={{ ...s.mono, color: '#C9CFDA', fontSize: 12 }}>{session.role}</span>
-          <button type="button" onClick={signOut} style={{ ...s.btn, background: 'transparent', color: '#fff', borderColor: '#3A4150' }}>
+          <button type="button" onClick={signOut} style={{ ...s.btn, background: 'transparent', color: '#fff', border: '1px solid #3A4150' }}>
             Sign out
           </button>
         </div>
@@ -99,7 +99,7 @@ const bar: React.CSSProperties = {
 };
 
 const brand: React.CSSProperties = {
-  font: '600 17px/1 "Barlow Condensed", system-ui, sans-serif',
+  font: '600 17px/1 var(--font-display), "Barlow Condensed", system-ui, sans-serif',
   letterSpacing: '2px',
 };
 
