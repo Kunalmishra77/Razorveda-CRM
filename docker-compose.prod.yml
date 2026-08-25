@@ -66,7 +66,8 @@ services:
   migrate:
     build:
       context: .
-      target: migrate
+      args:
+        APP: migrate
     restart: 'no'
     environment:
       DATABASE_URL: postgresql://razorveda_migrator:${POSTGRES_PASSWORD}@postgres:5432/razorveda
@@ -81,7 +82,8 @@ services:
   api:
     build:
       context: .
-      target: api
+      args:
+        APP: api
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -131,7 +133,8 @@ services:
   worker:
     build:
       context: .
-      target: worker
+      args:
+        APP: worker
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -152,8 +155,8 @@ services:
   web:
     build:
       context: .
-      target: web
       args:
+        APP: web
         # BUILD-TIME, not runtime. Next inlines NEXT_PUBLIC_* into the browser
         # bundle when it builds; setting it only at runtime leaves every rep's
         # browser calling http://localhost:3001. This is the mistake that makes a

@@ -1,77 +1,169 @@
 # Deploying to Coolify
 
-Everything here is done in the Coolify web UI. There is exactly one step that
-needs a terminal, it is Coolify's own built-in Terminal, and it is optional.
+Everything is done in the Coolify web UI. Nothing here needs PowerShell on your
+laptop; the one command that has to run against the database runs in Coolify's
+own Terminal.
 
-**What runs:** six containers on one server — Postgres, Redis, MinIO, the API,
-the worker, and the Next.js web app — plus a migrate job that runs to completion
-before the API starts. One of everything (CLAUDE.md rule 9).
+There are two ways to deploy this repository. **This guide covers the Dockerfile
+route**, which is the one being used: Postgres and Redis become *managed*
+Coolify databases (so Coolify handles their backups), and the app becomes three
+applications built from the same Dockerfile.
+
+> The alternative is one **Docker Compose** resource pointed at
+> `/docker-compose.prod.yml`, which brings up all six containers together. It is
+> fewer steps but gives you no managed backups. Both are supported by the same
+> Dockerfile — see §8.
+
+---
+
+## How the one Dockerfile makes four different containers
+
+`APP` is a **build argument**. It decides what the container becomes:
+
+| `APP` | What runs |
+|---|---|
+| `api` | NestJS API on port 3001 |
+| `web` | Next.js on port 3000 |
+| `worker` | BullMQ consumer, no port |
+| `migrate` | Schema + master data, runs once and exits |
+
+So you create four Coolify resources from the same repository, each with a
+different `APP`. No "build stage target" field is required.
 
 ---
 
 ## Before you start
 
-You need:
-
-- A server already connected to Coolify (**Servers** in the sidebar, status green)
-- Two subdomains pointing at that server's IP, e.g.
+- A server connected to Coolify (**Servers** → status green)
+- Two subdomains already pointing at that server's IP:
   - `crm.razorveda.com` → the web app
   - `api.razorveda.com` → the API
-- The repository URL: `https://github.com/Kunalmishra77/Razorveda-CRM.git`
+- The repository: `https://github.com/Kunalmishra77/Razorveda-CRM.git`
 
-Both DNS records must resolve **before** you deploy, or Coolify cannot issue TLS
-certificates and the browser will refuse the API calls.
-
----
-
-## 1 · Create the application
-
-1. **Projects** → your project → **production** → **+ New Resource**
-2. Choose **Docker Compose** (not "Nixpacks", not "Dockerfile" — this repo ships
-   its own compose file describing all six services)
-3. Choose **Public Repository** and paste:
-
-   ```
-   https://github.com/Kunalmishra77/Razorveda-CRM.git
-   ```
-
-4. **Check repository** → branch `master`
-5. Set **Docker Compose Location** to:
-
-   ```
-   /docker-compose.prod.yml
-   ```
-
-   This matters. `docker-compose.yml` at the root is **local development
-   infrastructure only** — it publishes Postgres on a host port, which must never
-   happen on a server (D-17).
-
-6. **Continue** / **Save**
+**DNS must resolve before you deploy.** Coolify cannot issue a TLS certificate
+for a name that does not point at it, and without TLS the browser blocks every
+call from the web app to the API.
 
 ---
 
-## 2 · Environment variables
+## 1 · Postgres
 
-**Settings → Environment Variables** on the application.
+**+ New Resource → Database → PostgreSQL 16**
 
-Paste the block below into the bulk editor, then replace the two domains at the
-bottom with yours. The secrets are already generated — they are random, unique to
-this deployment, and there is no reason to change them.
+| Field | Value |
+|---|---|
+| Name | `razorveda-postgres` |
+| Database | `razorveda` |
+| Username | `razorveda_migrator` |
+| Password | `POSTGRES_PASSWORD` from your secrets |
+
+Deploy it, then open it and copy the **internal** connection URL. It looks like:
+
+```
+postgresql://razorveda_migrator:<password>@razorveda-postgres:5432/razorveda
+```
+
+Use the internal hostname, not a public one. The database must not be reachable
+from the internet — do **not** enable "Public Port".
+
+> The username matters. `razorveda_migrator` **owns** the tables, and Postgres
+> table owners bypass Row-Level Security (D-21). The API never connects as this
+> role; the migration creates a second, non-owning role for it.
+
+---
+
+## 2 · Redis
+
+**+ New Resource → Database → Redis 7**
+
+| Field | Value |
+|---|---|
+| Name | `razorveda-redis` |
+
+Deploy, and copy its internal URL — `redis://razorveda-redis:6379`.
+Again: no public port.
+
+---
+
+## 3 · The migration
+
+**+ New Resource → Application → Public Repository**
+
+| Field | Value |
+|---|---|
+| Repository | `https://github.com/Kunalmishra77/Razorveda-CRM.git` |
+| Branch | `master` |
+| Build Pack | **Dockerfile** |
+| Dockerfile Location | `/Dockerfile` |
+| Name | `razorveda-migrate` |
+
+**Environment Variables:**
 
 ```dotenv
-POSTGRES_PASSWORD=<generated — see the values handed over separately>
-APP_DB_PASSWORD=<generated>
-JWT_SECRET=<generated, 64 characters>
-OWNER_CLAIM_TOKEN=<generated>
-S3_ACCESS_KEY=<generated>
-S3_SECRET_KEY=<generated>
+APP=migrate
+DATABASE_URL=postgresql://razorveda_migrator:<POSTGRES_PASSWORD>@razorveda-postgres:5432/razorveda
+APP_DB_PASSWORD=<APP_DB_PASSWORD from your secrets>
+TZ=Asia/Kolkata
+```
 
-S3_BUCKET=razorveda-uploads
-S3_REGION=ap-south-1
+Mark **`APP`** as a **Build Variable** (there is a toggle on the row). It is a
+build argument, so a runtime-only value leaves the image defaulting to `api`.
 
+Deploy it. It creates the schema, the RLS policies, the `razorveda_app` login
+role, and loads the master data — 7 product lines, 20 SKUs, 9 sources, 25
+dispositions, 80 aliases, 13 users — then **exits**.
+
+Coolify will show it as stopped or unhealthy. **That is correct.** It is a job,
+not a server. Turn off any auto-restart on this resource, and re-deploy it by
+hand whenever a migration needs to run.
+
+---
+
+## 4 · The API
+
+**+ New Resource → Application → Public Repository**, same repo and branch.
+
+| Field | Value |
+|---|---|
+| Build Pack | **Dockerfile** |
+| Dockerfile Location | `/Dockerfile` |
+| Name | `razorveda-api` |
+| Port | `3001` |
+| Domain | `https://api.razorveda.com` |
+
+**Environment Variables** — paste the whole block, substituting your secrets and
+domains:
+
+```dotenv
+APP=api
+
+NODE_ENV=production
+TZ=Asia/Kolkata
+API_PORT=3001
+
+DATABASE_URL=postgresql://razorveda_migrator:<POSTGRES_PASSWORD>@razorveda-postgres:5432/razorveda
+DATABASE_URL_APP=postgresql://razorveda_app:<APP_DB_PASSWORD>@razorveda-postgres:5432/razorveda
+DATABASE_APP_ROLE=app_role
+REDIS_URL=redis://razorveda-redis:6379
+
+JWT_SECRET=<JWT_SECRET from your secrets>
 JWT_ACCESS_TTL=15m
 JWT_REFRESH_TTL=7d
 SESSION_IDLE_TIMEOUT_MIN=10
+OWNER_CLAIM_TOKEN=<OWNER_CLAIM_TOKEN from your secrets>
+
+WEB_ORIGIN=https://crm.razorveda.com
+
+S3_ENDPOINT=http://razorveda-minio:9000
+S3_BUCKET=razorveda-uploads
+S3_ACCESS_KEY=<S3_ACCESS_KEY>
+S3_SECRET_KEY=<S3_SECRET_KEY>
+S3_REGION=ap-south-1
+
+AI_PROVIDER=gemini
+AI_MODEL=gemini-2.0-flash
+AI_MAPPING_MIN_CONFIDENCE=0.90
+AI_API_KEY=
 
 PII_COPY_VELOCITY_COUNT=4
 PII_COPY_VELOCITY_WINDOW_SEC=90
@@ -79,124 +171,145 @@ UNTOUCHED_ALERT_HOURS=48
 UNTOUCHED_RECALL_HOURS=72
 EMPLOYEE_MAX_ROWS_PER_PAGE=50
 
-AI_PROVIDER=gemini
-AI_MODEL=gemini-2.0-flash
-AI_MAPPING_MIN_CONFIDENCE=0.90
-AI_API_KEY=
-
 SMTP_HOST=
 SMTP_PORT=587
 SMTP_USER=
 SMTP_PASS=
 WHATSAPP_PROVIDER=
 WHATSAPP_API_KEY=
-
-WEB_ORIGIN=https://crm.razorveda.com
-NEXT_PUBLIC_API_URL=https://api.razorveda.com
 ```
 
-### The one that catches everybody
+Mark **`APP`** as a **Build Variable**.
 
-`NEXT_PUBLIC_API_URL` must be marked **Build Variable** in Coolify (there is a
-toggle on the variable row).
+`WEB_ORIGIN` must be the web domain **exactly** — `https`, no trailing slash. The
+API only accepts and returns CORS headers for that one origin, so a mismatch
+makes every sign-in fail with a CORS error in the browser console and nothing at
+all in the server log.
 
-Next.js inlines every `NEXT_PUBLIC_*` value into the browser bundle **when it
-builds**. If it is only a runtime variable, the build bakes in the default and
-every rep's browser tries to call `http://localhost:3001` — from her own laptop.
-Nothing appears in any server log, because the request never reaches the server.
-The screens load and every number is missing.
+### Two DATABASE URLs, on purpose
 
-`WEB_ORIGIN` is the mirror of it: the API only accepts and returns CORS headers
-for that exact origin. **No trailing slash**, and `https` not `http`.
-
-### What is deliberately not in the list
-
-- `TOTP_DISABLED` — leave unset. Two-factor for admins stays ON in production.
-- `SHIFT_HOURS_DISABLED` — leave unset. Reps sign in during their shift.
-- `RATE_LIMIT_DISABLED` — leave unset. It is the brute-force protection.
-- `SCHEDULER_DISABLED` — leave unset. The metrics refresh and the 72-hour recall
-  need to run.
-
-All four exist for local development and the API prints a warning line on boot
-for each one that is on. If you see those warnings in the production logs,
-something is set that should not be.
+`DATABASE_URL` is the migration user. `DATABASE_URL_APP` is the API's, and it
+connects as `razorveda_app` — a role that owns nothing, so Row-Level Security
+actually applies to it. The API refuses to start if `DATABASE_URL_APP` is
+missing, and says so in a full sentence.
 
 ---
 
-## 3 · Domains
+## 5 · The worker
 
-**Settings → Domains**, per service:
+Same repo, **Dockerfile**, name `razorveda-worker`. **No domain, no port.**
 
-| Service | Domain |
+```dotenv
+APP=worker
+NODE_ENV=production
+TZ=Asia/Kolkata
+DATABASE_URL_APP=postgresql://razorveda_app:<APP_DB_PASSWORD>@razorveda-postgres:5432/razorveda
+DATABASE_APP_ROLE=app_role
+REDIS_URL=redis://razorveda-redis:6379
+S3_ENDPOINT=http://razorveda-minio:9000
+S3_BUCKET=razorveda-uploads
+S3_ACCESS_KEY=<S3_ACCESS_KEY>
+S3_SECRET_KEY=<S3_SECRET_KEY>
+```
+
+Mark **`APP`** as a **Build Variable**.
+
+---
+
+## 6 · The web app
+
+Same repo, **Dockerfile**, name `razorveda-web`.
+
+| Field | Value |
 |---|---|
-| `web` | `https://crm.razorveda.com` |
-| `api` | `https://api.razorveda.com` |
+| Port | `3000` |
+| Domain | `https://crm.razorveda.com` |
 
-Leave `postgres`, `redis`, `minio`, `migrate` and `worker` with **no domain**.
-They are reachable only inside the compose network, which is the point — nothing
-should be able to reach the database from the internet.
+```dotenv
+APP=web
+NEXT_PUBLIC_API_URL=https://api.razorveda.com
+NODE_ENV=production
+TZ=Asia/Kolkata
+PORT=3000
+```
 
----
+### Mark BOTH `APP` and `NEXT_PUBLIC_API_URL` as Build Variables
 
-## 4 · Deploy
+This is the step that catches everybody.
 
-Press **Deploy**.
+Next.js inlines every `NEXT_PUBLIC_*` value into the **browser** bundle when it
+builds. If `NEXT_PUBLIC_API_URL` is only a runtime variable, the build bakes in
+the default and every rep's browser tries to call `http://localhost:3001` — from
+her own laptop. The screens load, every number is blank, and **nothing appears in
+any server log**, because the request never reaches your server.
 
-The first build takes roughly 5–10 minutes: it installs the workspace once and
-then builds the Next.js app. Later deploys are faster because the dependency
-layer is cached.
-
-Watch the **Logs** tab. In order you should see:
-
-1. `migrate` runs and exits — creates the schema, the RLS policies, the
-   `razorveda_app` login role, then loads the master data (7 product lines,
-   20 SKUs, 9 sources, 25 dispositions, 80 aliases, 13 users)
-2. `api` starts and prints `api  http://localhost:3001/health`
-3. `web` starts
-4. `worker` starts
-
-If `api` starts but immediately exits, read its log — it refuses to boot without
-`DATABASE_URL_APP` and says so in a full sentence.
+If you get this wrong, fixing the variable is not enough — you must **rebuild**.
+A restart re-runs the same bundle.
 
 ---
 
-## 5 · First sign-in
+## 7 · File storage (MinIO)
+
+Uploads need somewhere to live. Either:
+
+- **+ New Resource → Service → MinIO**, name it `razorveda-minio`, set its root
+  user and password to your `S3_ACCESS_KEY` / `S3_SECRET_KEY`, no public port; or
+- point `S3_ENDPOINT` at any S3-compatible bucket you already have, and set the
+  keys and region to match.
+
+Create the bucket named in `S3_BUCKET` (`razorveda-uploads`) before the first
+file upload.
+
+---
+
+## 8 · Deploy order
+
+1. `razorveda-postgres`
+2. `razorveda-redis`
+3. `razorveda-minio`
+4. `razorveda-migrate` — wait for it to finish and exit
+5. `razorveda-api` — log should end with `api  http://localhost:3001/health`
+6. `razorveda-worker`
+7. `razorveda-web`
+
+First build takes roughly 5–10 minutes; later ones are faster because the
+dependency layer is cached.
+
+**Redeploying after a code change:** push to `master`, redeploy `razorveda-api`,
+`razorveda-worker` and `razorveda-web`. Redeploy `razorveda-migrate` too when the
+schema changed — it is idempotent, so running it when nothing changed is
+harmless.
+
+---
+
+## 9 · First sign-in
 
 Open `https://crm.razorveda.com`.
 
-The seeded accounts all use the development password, which **must be changed
-before the team uses this**. The OWNER account is seeded **locked** on purpose —
-nobody has been nominated yet (O-07), and it is claimed with the
-`OWNER_CLAIM_TOKEN` you set above.
+- The seeded accounts use the development password. **Change it before the team
+  uses this.**
+- The OWNER account is seeded **locked** on purpose — nobody has been nominated
+  yet (O-07). It is claimed with `OWNER_CLAIM_TOKEN`.
+- Admins need a 6-digit authenticator code, because `TOTP_DISABLED` is not set in
+  production. Enrol from the prompt at login.
 
-Admins need a 6-digit authenticator code on first sign-in, because
-`TOTP_DISABLED` is not set. Enrol from the prompt shown at login.
+### Four variables that must stay unset
 
----
-
-## 6 · Backups
-
-**Databases** are not managed by Coolify here — Postgres is a service inside your
-compose stack, so set up the backup yourself:
-
-- Coolify → your server → **Scheduled Tasks**
-- Command: `pg_dump -U razorveda_migrator razorveda | gzip > /backups/razorveda-$(date +\%F).sql.gz`
-- Container: the `postgres` service
-- Frequency: daily is the minimum for a business whose orders live here
-
-`npm run db:restore-drill` exists and is what proves a backup is restorable. A
-backup nobody has restored is a hope, not a backup.
+`TOTP_DISABLED`, `SHIFT_HOURS_DISABLED`, `RATE_LIMIT_DISABLED` and
+`SCHEDULER_DISABLED` exist for local development. The API prints a warning line
+at boot for each one that is on. **If you see those warnings in production logs,
+something is set that should not be** — two-factor is off, or reps can sign in at
+3am, or brute-force protection is disabled, or the metrics never refresh.
 
 ---
 
-## Redeploying after a code change
+## 10 · Backups
 
-Push to `master` and press **Deploy** again, or turn on **Automatic Deployment**
-in Coolify so a push deploys itself.
+Because Postgres is a *managed* Coolify database here, open it and turn on
+**Scheduled Backups** — daily at minimum, with an S3 destination if you have one.
 
-`migrate` re-runs every deploy. Both halves are idempotent — it creates what is
-missing and upserts the master data — so a schema change lands automatically and
-a deploy with no schema change costs a few seconds.
+`npm run db:restore-drill` is what proves a backup is restorable. A backup nobody
+has restored is a hope, not a backup.
 
 ---
 
@@ -204,18 +317,20 @@ a deploy with no schema change costs a few seconds.
 
 | Symptom | Cause |
 |---|---|
-| Screens load, every number is blank or "Cannot reach the API" | `NEXT_PUBLIC_API_URL` was not marked a **Build Variable**. Fix the toggle and **rebuild** — a restart is not enough, the value is baked into the bundle. |
-| Sign-in fails with a CORS error in the browser console | `WEB_ORIGIN` does not exactly match the web domain. Check for a trailing slash or `http` vs `https`. |
-| `api` exits on boot | Read the log. It names the missing variable. |
+| Screens load, every number blank, or "Cannot reach the API" | `NEXT_PUBLIC_API_URL` was not a **Build Variable**. Fix the toggle and **rebuild** — restarting is not enough. |
+| Sign-in fails, CORS error in the browser console | `WEB_ORIGIN` does not exactly match the web domain. Check trailing slash and `http` vs `https`. |
+| A container runs migrations then stops | That is `razorveda-migrate`, and it is correct. It is a job. |
+| Every app behaves like the API | `APP` was set as a runtime variable instead of a **Build Variable**, so the image kept its default. |
+| `api` exits at boot | Read the log; it names the missing variable in a sentence. |
 | `migrate` fails on `CREATE ROLE` | `APP_DB_PASSWORD` contains a character that broke the SQL literal. Use the generated value, or stick to letters, digits, `-` and `_`. |
-| Everything works but reports are stale | The scheduler is off. Check the API boot log for a `SCHEDULER_DISABLED` warning. |
+| Reports show stale numbers | The scheduler is off. Check the API boot log for a `SCHEDULER_DISABLED` warning. |
 
 ---
 
-## A note on what has not been tested
+## What has not been tested
 
-The Dockerfile and this compose file were written against the repository but
-**have not been built on this machine** — there is no Docker installed here
-(the local stack uses an embedded Postgres instead). Coolify's first build is
-therefore the first real test of them. If the build fails, the log will say which
-step, and it will be a dependency or a path, not a design problem.
+The Dockerfile and the compose file were written against this repository but
+**have not been built on this machine** — there is no Docker installed on the
+development laptop, which uses an embedded Postgres instead. Coolify's first
+build is therefore their first real test. If it fails, the build log will name
+the step, and it will be a path or a dependency rather than a design problem.
