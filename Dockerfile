@@ -41,15 +41,6 @@ RUN npm ci --no-audit --no-fund
 FROM deps AS source
 COPY . .
 
-# ─── api ────────────────────────────────────────────────────────────────────
-FROM source AS api
-ENV NODE_ENV=production
-EXPOSE 3001
-# The health endpoint is unauthenticated on purpose so an orchestrator can use it.
-HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
-  CMD curl -fsS http://localhost:3001/health || exit 1
-CMD ["npm", "run", "start", "-w", "@razorveda/api"]
-
 # ─── worker ─────────────────────────────────────────────────────────────────
 FROM source AS worker
 ENV NODE_ENV=production
@@ -86,3 +77,17 @@ CMD ["npm", "run", "start", "-w", "@razorveda/web"]
 FROM source AS migrate
 ENV NODE_ENV=production
 CMD ["sh", "-c", "npm run db:migrate && npm run db:seed"]
+
+# ─── api ────────────────────────────────────────────────────────────────────
+# LAST ON PURPOSE. A build with no --target builds the final stage, and this file
+# is meant to be driven by docker-compose.prod.yml where every service names its
+# own. If someone points Coolify's plain "Dockerfile" build pack at the repo and
+# forgets the target, the sensible thing to get is the API — not the migrate job,
+# which runs once and exits and would look like a container that will not stay up.
+FROM source AS api
+ENV NODE_ENV=production
+EXPOSE 3001
+# The health endpoint is unauthenticated on purpose so an orchestrator can use it.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
+  CMD curl -fsS http://localhost:3001/health || exit 1
+CMD ["npm", "run", "start", "-w", "@razorveda/api"]
