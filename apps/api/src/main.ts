@@ -52,7 +52,7 @@ async function bootstrap(): Promise<void> {
   // Tokens live in HttpOnly cookies, never in a body the browser can read (docs/05).
   app.use(cookieParser());
   app.use(securityHeaders({ production }));
-  app.use(rateLimit());
+  app.use(rateLimit(undefined, [webOrigin]));
   app.use(requireKnownOrigin([webOrigin]));
 
   // Behind Coolify's reverse proxy every request arrives from the proxy's address.

@@ -6,6 +6,7 @@ import { withRlsContext } from '../db/rls-context.js';
 import { AdminGuard, type AuthedRequest } from '../auth/session.guard.js';
 import { AssignmentService } from './assignment.service.js';
 import { TransferService } from './transfer.service.js';
+import { SplitService } from './split.service.js';
 import { preAssignWarnings, suggestSplit, type PoolLead, type RepSnapshot } from './pre-assign-warnings.js';
 
 /**
@@ -51,6 +52,34 @@ const transferSchema = z
   })
   .strict();
 
+/**
+ * A split is a pool assignment, so it needs no reason — nothing is taken from
+ * anyone. What it does need is a cap: 20 reps on a 7-person team is a typo, and
+ * a request carrying 500 shares would run 500 statements in one transaction.
+ */
+const splitSchema = z
+  .object({
+    shares: z
+      .array(
+        z.object({
+          toEmployeeId: z.string().uuid(),
+          leadCount: z.number().int().min(0).max(5000),
+        }),
+      )
+      .min(1, 'Give at least one rep a share.')
+      .max(20),
+    leadIds: z.array(z.string().uuid()).optional(),
+    filter: z
+      .object({
+        sourceId: z.string().uuid().optional(),
+        state: z.string().optional(),
+        minAgeHours: z.number().int().nonnegative().optional(),
+      })
+      .optional(),
+    note: z.string().max(500).optional(),
+  })
+  .strict();
+
 @Controller('assignment')
 @UseGuards(AdminGuard)
 export class AssignmentController {
@@ -58,6 +87,7 @@ export class AssignmentController {
     @Inject(pgLib.Pool) private readonly pool: Pool,
     @Inject(AssignmentService) private readonly assignments: AssignmentService,
     @Inject(TransferService) private readonly transfers: TransferService,
+    @Inject(SplitService) private readonly splits: SplitService,
   ) {}
 
   /** The unassigned pool. Capped page size; the count covers the whole filter. */
@@ -257,6 +287,39 @@ export class AssignmentController {
    * checks for one rule is deliberate: this endpoint is not the only caller the
    * service will ever have, and the rule belongs with the write.
    */
+  /**
+   * Split a batch across several reps in one action.
+   *
+   * The counts are the ADMIN's, not the algorithm's. `suggested-split` fills the
+   * form; every number in it is editable and nothing moves until this is called
+   * (D-02). Order matters and is preserved: reps are filled in the order given,
+   * oldest leads first, so a shortfall lands on the last rep rather than being
+   * spread invisibly.
+   */
+  @Post('split')
+  async split(@Body() body: unknown, @Req() request: AuthedRequest) {
+    const parsed = splitSchema.safeParse(body);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      return { ok: false, field: issue?.path.join('.'), message: issue?.message };
+    }
+    const d = parsed.data;
+
+    try {
+      const result = await this.splits.split(request.session!, {
+        ...(d.leadIds ? { leadIds: d.leadIds } : {}),
+        filter: d.filter ?? {},
+        shares: d.shares,
+        ...(d.note ? { note: d.note } : {}),
+      });
+      return { ok: true, ...result };
+    } catch (e) {
+      // A refusal a human caused — a rep listed twice, every count zero — is a
+      // 200 with a message the form can show, not a 500 reading "we broke".
+      return { ok: false, message: e instanceof Error ? e.message : 'That split could not be made.' };
+    }
+  }
+
   @Post('transfer')
   async transfer(@Body() body: unknown, @Req() request: AuthedRequest) {
     const parsed = transferSchema.safeParse(body);
@@ -327,7 +390,18 @@ const repQuery = (withYield = true): string => `
          ), 0)::text`
            : `'0'`} AS yield_per_lead
     FROM employee e
-   WHERE e.status <> 'EXITED'
+    JOIN app_user u ON u.user_id = e.user_id
+   -- REPS ONLY. Admins and the owner have employee rows too — that is how the
+   -- roster is modelled — and this query did not say so, so every screen that
+   -- picks "who to assign to" offered Sunita, Sonia, Sonam and the Owner
+   -- alongside the seven people who actually make calls.
+   --
+   -- It was not cosmetic. An admin has no worklist: leads assigned to one would
+   -- sit in the database attached to somebody who never opens a lead screen,
+   -- invisible to every rep and to the pool alike. The Split panel made it
+   -- obvious by putting all of them in one table with a box each; on the older
+   -- dropdown they were four unremarkable names in a list.
+   WHERE u.role = 'EMPLOYEE' AND e.status <> 'EXITED'
    ORDER BY e.emp_code`;
 
 const toSnapshot = (r: RepRow): RepSnapshot => ({

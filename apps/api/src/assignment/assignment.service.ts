@@ -50,6 +50,10 @@ export interface BulkAssignResult {
  * assignment IS the pool (docs/02), and re-assigning a lead someone is already
  * working would silently steal it. Transfers are a separate, explicit action.
  */
+export function poolWhereFor(filter: PoolFilter, params: unknown[]): string {
+  return poolWhere(filter, params);
+}
+
 function poolWhere(filter: PoolFilter, params: unknown[]): string {
   const clauses = ['l.assigned_to IS NULL', 'l.is_converted = false', 'l.closed_at IS NULL'];
 

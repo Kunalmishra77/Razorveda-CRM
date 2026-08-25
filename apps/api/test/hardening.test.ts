@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { RateLimiter, DEFAULT_RULES, GLOBAL_RULE } from '../src/security/rate-limit.js';
+import { RateLimiter, DEFAULT_RULES, GLOBAL_RULE, rateLimit } from '../src/security/rate-limit.js';
 import { validateUpload, MAX_UPLOAD_BYTES } from '../src/security/upload-guard.js';
 
 /**
@@ -165,5 +165,107 @@ describe('upload validation', () => {
     // 2,000 rows/day at ~175 bytes is ~350 KB. The old effective limit was ~75 KB
     // of CSV, because Express defaults to a 100 KB body and base64 adds a third.
     expect(MAX_UPLOAD_BYTES).toBeGreaterThan(350 * 1024 * 10);
+  });
+});
+
+/**
+ * THE MIDDLEWARE, not just the counter.
+ *
+ * `RateLimiter` was well covered and both of these bugs lived in the twenty lines
+ * around it — the part nothing tested because it needed a request object. Both
+ * were found by using the product: a browser could not read a 429 at all, and it
+ * reported "Cannot reach the API" instead.
+ *
+ * Fakes rather than a live server: the properties are about headers and about
+ * which requests get counted, and neither needs a socket.
+ */
+type Handler = (req: unknown, res: unknown, next: () => void) => void;
+
+function fakeRes() {
+  const headers: Record<string, string> = {};
+  let code = 200;
+  let body: unknown = null;
+  // `status` is Express's SETTER, so the reader needs a different name — the
+  // first version had both and the method silently shadowed the getter, which
+  // made three assertions compare against a function and fail confusingly.
+  return {
+    headers,
+    get code() { return code; },
+    get body() { return body; },
+    setHeader(k: string, v: string) { headers[k] = v; },
+    status(c: number) { code = c; return this; },
+    json(b: unknown) { body = b; return this; },
+  };
+}
+
+const req = (method: string, path: string, origin?: string) => ({
+  method,
+  path,
+  ip: '203.0.113.7',
+  socket: { remoteAddress: '203.0.113.7' },
+  headers: origin ? { origin } : {},
+});
+
+describe('the rate-limit middleware', () => {
+  const ORIGIN = 'http://localhost:3000';
+
+  it('does not count a CORS preflight as a sign-in attempt', () => {
+    // The browser sends OPTIONS before every cross-origin POST. Counting it made
+    // each real sign-in cost two of the ten allowed, so a rep who mistyped her
+    // password five times was locked out for the wrong reason.
+    const mw = rateLimit(new RateLimiter(), [ORIGIN]) as unknown as Handler;
+    let passed = 0;
+    for (let i = 0; i < 50; i += 1) {
+      const res = fakeRes();
+      mw(req('OPTIONS', '/auth/login', ORIGIN), res, () => { passed += 1; });
+      expect(res.code, 'a preflight was refused').not.toBe(429);
+    }
+    expect(passed, 'preflights should always pass through').toBe(50);
+  });
+
+  it('still counts the POST behind the preflight', () => {
+    // The preflight is waved through; the request that can actually guess a
+    // password is not. Skipping OPTIONS must not weaken the control.
+    const mw = rateLimit(new RateLimiter(), [ORIGIN]) as unknown as Handler;
+    let refusedAt = -1;
+    for (let i = 0; i < 20; i += 1) {
+      const res = fakeRes();
+      mw(req('POST', '/auth/login', ORIGIN), res, () => undefined);
+      if (res.code === 429 && refusedAt < 0) refusedAt = i;
+    }
+    // The login rule allows ten in the window.
+    expect(refusedAt).toBe(10);
+  });
+
+  it('puts CORS headers on the refusal, so the browser can read the message', () => {
+    // Without these the browser discards the 429 before any JavaScript sees it,
+    // fetch rejects, and the web client reports "Cannot reach the API — check
+    // that it is running". The API was running and had answered clearly; the one
+    // message that could not get through was the useful one.
+    const mw = rateLimit(new RateLimiter(), [ORIGIN]) as unknown as Handler;
+    let last = fakeRes();
+    for (let i = 0; i < 12; i += 1) {
+      last = fakeRes();
+      mw(req('POST', '/auth/login', ORIGIN), last, () => undefined);
+    }
+    expect(last.code).toBe(429);
+    expect(last.headers['Access-Control-Allow-Origin']).toBe(ORIGIN);
+    expect(last.headers['Access-Control-Allow-Credentials']).toBe('true');
+    expect(last.headers['Vary']).toBe('Origin');
+    expect(last.headers['Retry-After']).toBe('300');
+    expect((last.body as { message: string }).message).toMatch(/too many sign-in attempts/i);
+  });
+
+  it('does not echo an origin it was not told to allow', () => {
+    // A refusal is not a reason to loosen the origin check. An attacker's page
+    // must not be able to read the message either.
+    const mw = rateLimit(new RateLimiter(), [ORIGIN]) as unknown as Handler;
+    let last = fakeRes();
+    for (let i = 0; i < 12; i += 1) {
+      last = fakeRes();
+      mw(req('POST', '/auth/login', 'https://evil.example'), last, () => undefined);
+    }
+    expect(last.code).toBe(429);
+    expect(last.headers['Access-Control-Allow-Origin']).toBeUndefined();
   });
 });

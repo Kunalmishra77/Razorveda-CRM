@@ -8,6 +8,7 @@ import {
 import { api, ApiError, type PoolLead, type Rep, type Warning } from '../../../lib/api';
 import { s, T } from '../../../lib/ui';
 import { MoveWork } from './MoveWork';
+import { SplitPanel } from './SplitPanel';
 
 /**
  * Lead Assignment — "the most important admin screen" (docs/07 §3).
@@ -26,12 +27,11 @@ export default function AssignmentConsole() {
   const [selection, setSelection] = useState<SelectionState>(emptySelection());
   const [repId, setRepId] = useState('');
   const [warnings, setWarnings] = useState<Warning[]>([]);
-  const [split, setSplit] = useState<Array<{ fullName: string; leadCount: number; reason: string }>>([]);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ageFilter, setAgeFilter] = useState('');
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState<'pool' | 'move'>('pool');
+  const [tab, setTab] = useState<'pool' | 'split' | 'move'>('pool');
 
   const load = useCallback(async () => {
     try {
@@ -65,15 +65,6 @@ export default function AssignmentConsole() {
       .catch(() => { if (!cancelled) setWarnings([]); });
     return () => { cancelled = true; };
   }, [repId, selectedIds]);
-
-  async function loadSplit() {
-    try {
-      const r = await api.get<{ proposal: Array<{ fullName: string; leadCount: number; reason: string }> }>(
-        `/assignment/suggested-split?leadCount=${count || total}`,
-      );
-      setSplit(r.proposal);
-    } catch { setSplit([]); }
-  }
 
   async function assign() {
     setBusy(true);
@@ -118,7 +109,9 @@ export default function AssignmentConsole() {
       <p style={s.sub}>
         {tab === 'pool'
           ? 'Filter the pool, tick what you want, pick a rep, assign.'
-          : 'Take work off one rep and give it to another, or send it back to the pool.'}
+          : tab === 'split'
+            ? 'Hand one batch out across the whole team in a single action.'
+            : 'Take work off one rep and give it to another, or send it back to the pool.'}
       </p>
 
       {/* Two jobs, not one. Giving out new data and moving somebody's existing
@@ -127,6 +120,7 @@ export default function AssignmentConsole() {
       <div style={{ display: 'flex', gap: 6, margin: '0 0 12px' }}>
         {([
           ['pool', 'Unassigned pool'],
+          ['split', 'Split across the team'],
           ['move', 'Move work'],
         ] as const).map(([key, label]) => {
           const on = tab === key;
@@ -146,6 +140,23 @@ export default function AssignmentConsole() {
       </div>
 
       {tab === 'move' && <MoveWork onMoved={() => void load()} />}
+
+      {tab === 'split' && (
+        <>
+          {error && <div role="alert" style={s.notice('bad')}>{error}</div>}
+          <SplitPanel
+            reps={reps}
+            available={total}
+            leadIds={selectedIds}
+            ageFilter={ageFilter}
+            onDone={() => { setSelection(clearSelection()); void load(); }}
+          />
+          <p style={{ ...s.sub, marginTop: 10, fontSize: 12.5 }}>
+            Leads go out oldest first, because those are the ones losing value. Tick rows on the
+            Unassigned pool tab first if you want to split a specific set instead.
+          </p>
+        </>
+      )}
 
       {tab === 'pool' && (
       <>
@@ -170,26 +181,8 @@ export default function AssignmentConsole() {
             Select first 25
           </button>
           <button type="button" style={s.btn} onClick={() => setSelection(clearSelection())}>Clear</button>
-          <button type="button" style={s.btn} onClick={() => void loadSplit()}>Suggested split</button>
         </div>
       </section>
-
-      {split.length > 0 && (
-        <section style={s.card} aria-label="Suggested split">
-          <div style={s.cardHead}><span>Suggested split · advisory only</span><span /></div>
-          <p style={{ ...s.sub, margin: '0 0 8px', fontSize: 12 }}>
-            A proposal from current workload and last month&apos;s yield. It never assigns on its own —
-            edit it or ignore it.
-          </p>
-          {split.map((p) => (
-            <div key={p.fullName} style={{ fontSize: 13, marginBottom: 3 }}>
-              <span style={{ ...s.mono, display: 'inline-block', width: 34 }}>{p.leadCount}</span>
-              {p.fullName}
-              <span style={{ color: T.faint, fontSize: 11.5, marginLeft: 8 }}>{p.reason}</span>
-            </div>
-          ))}
-        </section>
-      )}
 
       <section style={s.card} aria-label="Unassigned pool">
         <div style={s.cardHead}>

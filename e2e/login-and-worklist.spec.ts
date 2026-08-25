@@ -65,8 +65,10 @@ async function signIn(page: import('@playwright/test').Page, who: typeof REP): P
   ]);
   if (await limited.count()) {
     throw new Error(
-      'Rate limited by /auth/login, not a product failure. Ten attempts per address ' +
-        'per five minutes, and this suite spends four of them. Wait five minutes and re-run.',
+      'Rate limited by /auth/login — not a product failure. Ten attempts per address per ' +
+        'five minutes and this suite spends four, so two runs inside one window is the ' +
+        'ceiling. Either wait five minutes, or start the API with RATE_LIMIT_DISABLED=1, ' +
+        'which exists for exactly this and announces itself at boot.',
     );
   }
 }

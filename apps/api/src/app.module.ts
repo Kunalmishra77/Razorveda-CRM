@@ -14,6 +14,7 @@ import { CommitService } from './ingestion/commit.service.js';
 import { AssignmentController } from './assignment/assignment.controller.js';
 import { AssignmentService } from './assignment/assignment.service.js';
 import { TransferService } from './assignment/transfer.service.js';
+import { SplitService } from './assignment/split.service.js';
 import { MeController } from './worklist/me.controller.js';
 import { TeamController } from './team/team.controller.js';
 import { WorklistController } from './worklist/worklist.controller.js';
@@ -101,6 +102,7 @@ import { LocalFileStorage, type StorageAdapter } from './storage/storage.js';
       inject: [pg.Pool],
     },
     { provide: TransferService, useFactory: (pool: pg.Pool) => new TransferService(pool), inject: [pg.Pool] },
+    { provide: SplitService, useFactory: (pool: pg.Pool) => new SplitService(pool), inject: [pg.Pool] },
     { provide: ActivityService, useFactory: (pool: pg.Pool) => new ActivityService(pool), inject: [pg.Pool] },
     { provide: StatusService, useFactory: (pool: pg.Pool) => new StatusService(pool), inject: [pg.Pool] },
     { provide: RepeatService, useFactory: (pool: pg.Pool) => new RepeatService(pool), inject: [pg.Pool] },

@@ -150,7 +150,16 @@ export class RateLimiter {
  */
 export const rateLimitDisabled = (): boolean => process.env['RATE_LIMIT_DISABLED'] === '1';
 
-export function rateLimit(limiter: RateLimiter = new RateLimiter()) {
+/**
+ * The origins whose 429s may be read by the browser. Same list main.ts passes to
+ * enableCors — echoed here rather than wildcarded, because a refusal that carries
+ * `Access-Control-Allow-Origin: *` alongside credentials is rejected anyway, and
+ * a refusal is not a reason to loosen the origin check.
+ */
+export function rateLimit(
+  limiter: RateLimiter = new RateLimiter(),
+  allowedOrigins: readonly string[] = [],
+) {
   if (rateLimitDisabled()) {
     console.warn(
       'api      RATE LIMITING IS OFF (RATE_LIMIT_DISABLED=1). Login brute-force protection ' +
@@ -165,6 +174,17 @@ export function rateLimit(limiter: RateLimiter = new RateLimiter()) {
   timer.unref?.();
 
   return (req: Request, res: Response, next: NextFunction): void => {
+    // A CORS PREFLIGHT IS NOT AN ATTEMPT.
+    //
+    // The browser sends OPTIONS before every cross-origin POST, and this counted
+    // it, so each sign-in cost TWO of the ten allowed per five minutes. A rep who
+    // mistyped her password five times was locked out for the wrong reason, and
+    // the E2E suite tripped the limiter in half the runs it should have.
+    //
+    // Preflights carry no credentials and cannot themselves be brute-forced —
+    // the POST behind them is still counted, which is the request that matters.
+    if (req.method === 'OPTIONS') { next(); return; }
+
     // req.ip honours trust proxy. Behind Coolify that must be configured, or every
     // request appears to come from the reverse proxy and one rep's burst rate
     // limits the whole company. See main.ts.
@@ -172,6 +192,23 @@ export function rateLimit(limiter: RateLimiter = new RateLimiter()) {
     const refused = limiter.check(ip, req.path, Date.now());
 
     if (refused) {
+      // THE REFUSAL HAS TO BE READABLE BY THE BROWSER.
+      //
+      // This middleware runs before enableCors, so a 429 went out with no
+      // Access-Control-Allow-Origin and the browser discarded it before any
+      // JavaScript saw it. `fetch` rejected, the web client's network-failure
+      // branch fired, and a rate-limited rep was told **"Cannot reach the API —
+      // check that it is running"**. The API was running and had answered her
+      // clearly; the one message that could not get through was the useful one.
+      //
+      // Exactly the defect D-296 was written about, one layer lower down: a
+      // correct diagnosis replaced by a wrong one on the way to the person.
+      const origin = req.headers.origin;
+      if (typeof origin === 'string' && allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Vary', 'Origin');
+      }
       res.setHeader('Retry-After', String(Math.ceil(refused.windowMs / 1000)));
       res.status(429).json({ ok: false, message: refused.message });
       return;
