@@ -41,9 +41,16 @@ WORKDIR /app
 # Manifests only, so this layer stays cached until a dependency actually
 # changes. Editing a controller must not trigger a fresh npm ci.
 #
-# devDependencies are installed on purpose: tsx runs the API and the worker, and
-# next builds the web app. `--omit=dev` here would produce an image that cannot
-# start.
+# devDependencies are installed ON PURPOSE, and `--include=dev` is not
+# redundant. tsx runs the API and the worker; next builds the web app. If either
+# is missing the container starts and immediately dies with "not found".
+#
+# npm omits devDependencies whenever NODE_ENV=production is set in the build
+# environment, and a platform can set that without the Dockerfile asking for it —
+# Coolify passes build-time variables straight through and warns about exactly
+# this. `--include=dev` overrides NODE_ENV, so the image is correct no matter
+# what the builder injects. NODE_ENV is set to production LATER, after the
+# install, where it belongs.
 FROM base AS deps
 COPY package.json package-lock.json ./
 COPY apps/api/package.json         apps/api/
@@ -52,7 +59,7 @@ COPY apps/worker/package.json      apps/worker/
 COPY packages/db/package.json      packages/db/
 COPY packages/shared/package.json  packages/shared/
 COPY packages/metrics/package.json packages/metrics/
-RUN npm ci --no-audit --no-fund
+RUN npm ci --include=dev --no-audit --no-fund
 
 # ─── app ────────────────────────────────────────────────────────────────────
 FROM deps AS app
