@@ -92,7 +92,7 @@ Again: no public port.
 | Field | Value |
 |---|---|
 | Repository | `https://github.com/Kunalmishra77/Razorveda-CRM.git` |
-| Branch | `master` |
+| Branch | `main` |
 | Build Pack | **Dockerfile** |
 | Dockerfile Location | `/Dockerfile` |
 | Name | `razorveda-migrate` |
@@ -121,7 +121,7 @@ hand whenever a migration needs to run.
 
 ## 4 · The API
 
-**+ New Resource → Application → Public Repository**, same repo and branch.
+**+ New Resource → Application → Public Repository**, same repository and branch.
 
 | Field | Value |
 |---|---|
@@ -275,7 +275,7 @@ file upload.
 First build takes roughly 5–10 minutes; later ones are faster because the
 dependency layer is cached.
 
-**Redeploying after a code change:** push to `master`, redeploy `razorveda-api`,
+**Redeploying after a code change:** push to `main`, redeploy `razorveda-api`,
 `razorveda-worker` and `razorveda-web`. Redeploy `razorveda-migrate` too when the
 schema changed — it is idempotent, so running it when nothing changed is
 harmless.
