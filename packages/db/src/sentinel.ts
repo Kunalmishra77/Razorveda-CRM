@@ -13,6 +13,15 @@ import type { Client } from 'pg';
  * The production deploy path never creates that table, so a tunnelled production
  * database fails closed no matter what the URL looks like.
  *
+ * THAT LAST SENTENCE WAS WRONG UNTIL THE FIRST REAL DEPLOY (D-342). The deploy
+ * path is a plain `migrate` against an EMPTY database, and the bootstrap branch
+ * that marks a fresh local database keyed off "was it empty" rather than "is it
+ * local" — so the very first production migration stamped production as
+ * disposable and disarmed this check. `migrate.ts` now requires
+ * `target.isLocal` before writing the marker. If you are reading this because
+ * you found a marker on a production database, DROP THE TABLE: it is not inert,
+ * it is the safety catch held open.
+ *
  * Neither check is sufficient alone. Both are cheap. Keep both.
  *
  * RESIDUAL GAP, stated plainly: anyone who runs `migrate --fresh` against

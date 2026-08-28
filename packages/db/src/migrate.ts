@@ -88,7 +88,27 @@ async function main(): Promise<void> {
       }
     }
 
-    if ((wasEmpty || fresh) && !(await hasLocalDevMarker(client))) {
+    // ONLY A LOCAL DATABASE GETS THE MARKER, and the `target.isLocal` here is the
+    // whole point of this condition.
+    //
+    // The marker means "this database is disposable" — `seed` and
+    // `migrate --fresh` both refuse to run without it, and sentinel.ts states the
+    // reasoning as: "The production deploy path never creates that table, so a
+    // tunnelled production database fails closed no matter what the URL looks
+    // like."
+    //
+    // That sentence was FALSE, and the first production deploy proved it. The
+    // deploy path is a plain `migrate` against an empty database, so `wasEmpty`
+    // was true and the marker was written straight into production — stamping the
+    // live database as disposable and disarming the second of the two independent
+    // guards. Together with the RAZORVEDA_ALLOW_REMOTE_DDL that a deploy needs
+    // set, `migrate --fresh` against production would then have passed BOTH
+    // checks and dropped every table.
+    //
+    // The bootstrap problem the old condition solved is real — a plain migrate on
+    // an empty LOCAL database must leave a marker, or every later `--fresh`
+    // refuses forever. It just has to stop at the edge of production.
+    if (target.isLocal && (wasEmpty || fresh) && !(await hasLocalDevMarker(client))) {
       await createLocalDevMarker(client);
       console.log('   wrote _local_dev_marker');
     }

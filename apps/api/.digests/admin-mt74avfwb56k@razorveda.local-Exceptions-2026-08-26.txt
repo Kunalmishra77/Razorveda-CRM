@@ -1,0 +1,12 @@
+To: admin-mt74avfwb56k@razorveda.local
+Subject: Exceptions — 2026-08-26
+
+Exceptions for 2026-08-26.
+
+  0 assigned lead(s) untouched for over 48 hours (they return to the pool at 72)
+  1576 lead(s) sitting unassigned in the pool
+  0 staged row(s) awaiting review in an open batch
+  19 active SKU(s) with no confirmed Shopify base price
+  0 order(s) with no movement for over 7 days
+
+A SKU with no confirmed base price cannot have its credit calculated. Orders on it book normally, but the rep earns nothing until the price is confirmed in Master Data.
