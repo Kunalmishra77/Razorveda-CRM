@@ -74,6 +74,16 @@ async function bootstrap(): Promise<void> {
       ? 'api      !! TWO-FACTOR IS OFF for admins (TOTP_DISABLED=1). Development only.'
       : 'api      two-factor required for admins and the owner',
   );
+  // Said out loud, like every other control that can be switched off. A session
+  // cookie without Secure travels in clear text; if this line is in a log that
+  // serves real reps, the authentication system is not doing its job.
+  if (process.env['COOKIE_SECURE'] === 'false') {
+    console.log(
+      'api      !! SESSION COOKIES ARE NOT MARKED SECURE (COOKIE_SECURE=false).
+' +
+        'api         Only valid for an http deployment nobody outside the network can reach.',
+    );
+  }
   if (process.env['SHIFT_HOURS_DISABLED'] === '1') {
     console.log('api      !! SHIFT HOURS ARE OFF for reps (SHIFT_HOURS_DISABLED=1). Development only.');
   }

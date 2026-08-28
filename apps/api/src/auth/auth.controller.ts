@@ -125,8 +125,31 @@ function localTimeInIst(): string {
   }).format(new Date());
 }
 
+/**
+ * WHETHER THE SESSION COOKIE CARRIES `Secure`.
+ *
+ * Production means HTTPS, so `secure` is on by default and must stay on for
+ * anything a rep touches — a session cookie sent in clear text is the whole
+ * authentication system handed to anyone on the network.
+ *
+ * But "production" and "has TLS" are not the same thing, and an internal staging
+ * box is where they come apart. A browser SILENTLY DISCARDS a `Secure` cookie
+ * that arrives over plain http: the API answers 200 with ok:true, the browser
+ * keeps nothing, and every request after it is a 401 that bounces the user back
+ * to the login page. No error anywhere says why. That is the exact shape of
+ * failure this project keeps finding, so it gets an explicit switch rather than
+ * being discovered again.
+ *
+ * COOKIE_SECURE=false is for an http deployment nobody outside the network can
+ * reach. It is announced at boot like every other control that can be turned off.
+ */
+export const cookiesAreSecure = (): boolean => {
+  if (process.env['COOKIE_SECURE'] === 'false') return false;
+  return process.env['NODE_ENV'] === 'production';
+};
+
 function setAuthCookies(response: Response, accessToken: string, refreshToken: string): void {
-  const secure = process.env['NODE_ENV'] === 'production';
+  const secure = cookiesAreSecure();
   response.cookie('rv_access', accessToken, {
     httpOnly: true,
     sameSite: 'strict',
