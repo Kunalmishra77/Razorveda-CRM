@@ -79,8 +79,7 @@ async function bootstrap(): Promise<void> {
   // serves real reps, the authentication system is not doing its job.
   if (process.env['COOKIE_SECURE'] === 'false') {
     console.log(
-      'api      !! SESSION COOKIES ARE NOT MARKED SECURE (COOKIE_SECURE=false).
-' +
+      'api      !! SESSION COOKIES ARE NOT MARKED SECURE (COOKIE_SECURE=false).\n' +
         'api         Only valid for an http deployment nobody outside the network can reach.',
     );
   }
